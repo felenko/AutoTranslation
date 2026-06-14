@@ -2,6 +2,8 @@
 
 Real-time AI subtitles for streaming and any audio playing on your Windows PC. Captures system audio, transcribes speech, translates it, and overlays subtitles in your browser.
 
+![AutoTranslation subtitles overlay](docs/ai-speech-transcript.png)
+
 ## How it works
 
 ```
