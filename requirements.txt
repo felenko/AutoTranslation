@@ -1,0 +1,14 @@
+# Audio capture (Windows WASAPI loopback)
+pyaudiowpatch>=0.2.12
+
+# AI engines
+anthropic>=0.34.0
+openai>=1.40.0
+aiohttp>=3.9.0
+httpx>=0.27.0
+
+# WebSocket server
+websockets>=12.0
+
+# Optional: local Whisper STT (only needed if stt.engine = "whisper_local")
+# faster-whisper>=1.0.0

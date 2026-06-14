@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>AutoTranslation</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="header">
+    <span class="logo">AutoTranslation</span>
+    <span id="status-dot" class="dot disconnected" title="Service status"></span>
+  </div>
+
+  <div class="section">
+    <label class="toggle-row">
+      <span>Subtitles</span>
+      <label class="switch">
+        <input type="checkbox" id="toggle-subtitles" checked />
+        <span class="slider"></span>
+      </label>
+    </label>
+  </div>
+
+  <div class="section">
+    <label>Target language</label>
+    <input id="target-language" type="text" placeholder="e.g. English, Spanish" />
+  </div>
+
+  <div class="section">
+    <label>STT engine</label>
+    <select id="stt-engine">
+      <option value="whisper_api">Whisper API (OpenAI)</option>
+      <option value="whisper_local">Whisper Local (faster-whisper)</option>
+    </select>
+  </div>
+
+  <div class="section">
+    <label>Translation engine</label>
+    <select id="translation-engine">
+      <option value="mymemory">MyMemory (free, no key)</option>
+      <option value="cursor">Cursor AI (no key, via MyMemory fallback)</option>
+      <option value="claude">Claude (Anthropic)</option>
+      <option value="openai">OpenAI GPT</option>
+      <option value="ollama">Ollama (local)</option>
+    </select>
+  </div>
+
+  <div class="section" id="cursor-section" style="display:none">
+    <div class="hint">Uses Cursor subscription auth — currently routes through MyMemory while the new Cursor API endpoint is being mapped.</div>
+  </div>
+
+  <div class="section" id="claude-section" style="display:none">
+    <label>Claude model</label>
+    <input id="claude-model" type="text" placeholder="e.g. claude-sonnet-4-6" />
+    <div class="hint">Requires Anthropic API key in config.json.</div>
+  </div>
+
+  <div class="section" id="ollama-section" style="display:none">
+    <label>Ollama model</label>
+    <input id="ollama-model" type="text" placeholder="e.g. llama3" />
+  </div>
+
+  <hr />
+
+  <div class="section subtitle-label">Subtitle display</div>
+
+  <div class="section">
+    <label>Font size (px)</label>
+    <input id="font-size" type="number" min="12" max="48" value="22" />
+  </div>
+
+  <div class="section">
+    <label>Position</label>
+    <select id="position">
+      <option value="bottom">Bottom</option>
+      <option value="top">Top</option>
+    </select>
+  </div>
+
+  <div class="section">
+    <label class="toggle-row">
+      <span>Show original text</span>
+      <label class="switch">
+        <input type="checkbox" id="show-original" />
+        <span class="slider"></span>
+      </label>
+    </label>
+  </div>
+
+  <div class="section">
+    <button id="save-btn">Apply settings</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

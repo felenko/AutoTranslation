@@ -1,0 +1,40 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8765
+  },
+  "audio": {
+    "chunk_duration_seconds": 4.0,
+    "sample_rate": 16000
+  },
+  "stt": {
+    "engine": "whisper_local",
+    "whisper_api": {
+      "api_key": "YOUR_OPENAI_API_KEY",
+      "model": "whisper-1"
+    },
+    "whisper_local": {
+      "model_size": "base"
+    }
+  },
+  "translation": {
+    "engine": "mymemory",
+    "target_language": "English",
+    "claude": {
+      "api_key": "YOUR_ANTHROPIC_API_KEY",
+      "model": "claude-sonnet-4-6"
+    },
+    "openai": {
+      "api_key": "YOUR_OPENAI_API_KEY",
+      "model": "gpt-4o"
+    },
+    "ollama": {
+      "host": "http://localhost:11434",
+      "model": "llama3"
+    },
+    "cursor": {
+      "model": "claude-3-5-sonnet",
+      "token": ""
+    }
+  }
+}
