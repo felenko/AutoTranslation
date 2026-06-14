@@ -101,6 +101,8 @@ class Pipeline:
     def reload_engines(self, cfg: Config) -> None:
         """Full engine reload (kept for compatibility)."""
         self._cfg = cfg
+        self._capture._chunk_duration = cfg.audio.chunk_duration_seconds
+        print(f"[Pipeline] chunk duration -> {cfg.audio.chunk_duration_seconds}s")
         self._stt = build_stt_engine(cfg)
         self._translation = build_translation_engine(cfg)
 

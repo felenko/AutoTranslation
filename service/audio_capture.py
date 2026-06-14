@@ -9,6 +9,8 @@ from typing import AsyncIterator
 
 import pyaudiowpatch as pyaudio
 
+_READ_SECONDS = 0.1  # internal read size — chunk_duration is accumulated from these
+
 
 class AudioCapture:
     def __init__(self, chunk_duration: float = 4.0, sample_rate: int = 16000):
@@ -16,7 +18,7 @@ class AudioCapture:
         self._sample_rate = sample_rate
 
     async def stream(self) -> AsyncIterator[bytes]:
-        """Yields mono 16-bit PCM chunks at the configured sample rate."""
+        """Yields mono 16-bit PCM chunks. Chunk size follows _chunk_duration dynamically."""
         loop = asyncio.get_event_loop()
         queue: asyncio.Queue[bytes] = asyncio.Queue()
 
@@ -26,7 +28,7 @@ class AudioCapture:
                 device = _find_loopback_device(pa)
                 native_rate = int(device["defaultSampleRate"])
                 channels = min(int(device["maxInputChannels"]), 2)
-                chunk_frames = int(native_rate * self._chunk_duration)
+                read_frames = int(native_rate * _READ_SECONDS)
 
                 stream = pa.open(
                     format=pyaudio.paInt16,
@@ -34,17 +36,22 @@ class AudioCapture:
                     rate=native_rate,
                     input=True,
                     input_device_index=device["index"],
-                    frames_per_buffer=chunk_frames,
+                    frames_per_buffer=read_frames,
                 )
                 print(
                     f"[AudioCapture] capturing from '{device['name']}' "
                     f"at {native_rate}Hz, {channels}ch"
                 )
+                buffer = b""
                 try:
                     while True:
-                        raw = stream.read(chunk_frames, exception_on_overflow=False)
+                        raw = stream.read(read_frames, exception_on_overflow=False)
                         pcm = _to_mono_16k(raw, channels, native_rate, self._sample_rate)
-                        asyncio.run_coroutine_threadsafe(queue.put(pcm), loop)
+                        buffer += pcm
+                        target = int(self._sample_rate * self._chunk_duration) * 2  # bytes
+                        if len(buffer) >= target:
+                            asyncio.run_coroutine_threadsafe(queue.put(buffer[:target]), loop)
+                            buffer = buffer[target:]
                 finally:
                     stream.stop_stream()
                     stream.close()
@@ -74,7 +81,6 @@ def _to_mono_16k(raw: bytes, channels: int, src_rate: int, dst_rate: int) -> byt
     """Downmix to mono and resample to dst_rate using simple linear interpolation."""
     samples = struct.unpack(f"<{len(raw)//2}h", raw)
 
-    # Downmix to mono
     if channels > 1:
         mono = [
             sum(samples[i : i + channels]) // channels
@@ -83,7 +89,6 @@ def _to_mono_16k(raw: bytes, channels: int, src_rate: int, dst_rate: int) -> byt
     else:
         mono = list(samples)
 
-    # Resample
     if src_rate != dst_rate:
         ratio = src_rate / dst_rate
         out_len = int(len(mono) / ratio)
