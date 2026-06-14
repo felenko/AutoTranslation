@@ -69,12 +69,61 @@
       .replace(/>/g, "&gt;");
   }
 
+  // --- TTS ---
+  let ttsVoices = [];
+  let lastSpoken = "";
+  let ttsTimer = null;
+
+  function loadVoices() {
+    ttsVoices = window.speechSynthesis.getVoices();
+  }
+  loadVoices();
+  window.speechSynthesis.addEventListener("voiceschanged", loadVoices);
+
+  function pickVoice(gender) {
+    const pool = ttsVoices.filter(v => v.lang.toLowerCase().startsWith("en"));
+    const voices = pool.length ? pool : ttsVoices;
+    if (gender === "male") {
+      return voices.find(v => /\b(male|david|mark|james|guy|richard|george)\b/i.test(v.name)) || voices[0];
+    }
+    return voices.find(v => /\b(female|zira|susan|samantha|eva|linda|hazel)\b/i.test(v.name)) || voices[0];
+  }
+
+  function speakTranslation(text) {
+    if (!uiSettings.ttsEnabled || !text) return;
+    if (text === lastSpoken) return;   // don't repeat same phrase
+    lastSpoken = text;
+
+    if (ttsTimer) clearTimeout(ttsTimer);
+    window.speechSynthesis.cancel();
+    // Chrome needs a brief gap after cancel() before speak() or it loops
+    ttsTimer = setTimeout(() => {
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.rate = uiSettings.ttsRate || 1.0;
+      utter.volume = 1.0;
+      const voice = pickVoice(uiSettings.ttsVoice || "female");
+      if (voice) utter.voice = voice;
+      utter.onend = () => { lastSpoken = ""; };   // allow re-speaking after it finishes
+      window.speechSynthesis.speak(utter);
+    }, 100);
+  }
+
+  // Stop TTS when video pauses
+  document.addEventListener("pause", () => {
+    window.speechSynthesis.cancel();
+    lastSpoken = "";
+  }, true);
+  document.addEventListener("play", () => {
+    lastSpoken = "";
+  }, true);
+
   refreshUISettings();
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === "subtitle") {
       console.log("[AutoTranslation] subtitle received:", JSON.stringify(msg));
       showSubtitle(msg.original, msg.translation);
+      speakTranslation(msg.translation);
     }
     if (msg.type === "update_ui") {
       refreshUISettings(() => {

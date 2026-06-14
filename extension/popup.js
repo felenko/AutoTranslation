@@ -35,6 +35,13 @@ chrome.runtime.sendMessage({ type: "get_ui_settings" }, (res) => {
   if (uiPrefs.fontSize) $("font-size").value = uiPrefs.fontSize.replace("px", "");
   if (uiPrefs.position) $("position").value = uiPrefs.position;
   if (uiPrefs.showOriginal) $("show-original").checked = true;
+  $("tts-enabled").checked = !!uiPrefs.ttsEnabled;
+  if (uiPrefs.ttsVoice) $("tts-voice").value = uiPrefs.ttsVoice;
+  if (uiPrefs.ttsRate) { $("tts-rate").value = uiPrefs.ttsRate; $("tts-rate-label").textContent = parseFloat(uiPrefs.ttsRate).toFixed(1) + "x"; }
+});
+
+$("tts-rate").addEventListener("input", () => {
+  $("tts-rate-label").textContent = parseFloat($("tts-rate").value).toFixed(1) + "x";
 });
 
 $("chunk-duration").addEventListener("input", () => {
@@ -80,6 +87,9 @@ $("save-btn").addEventListener("click", () => {
     fontSize: $("font-size").value + "px",
     position: $("position").value,
     showOriginal: $("show-original").checked,
+    ttsEnabled: $("tts-enabled").checked,
+    ttsVoice: $("tts-voice").value,
+    ttsRate: parseFloat($("tts-rate").value),
   };
 
   chrome.runtime.sendMessage({ type: "set_ui_settings", settings: uiPrefs });

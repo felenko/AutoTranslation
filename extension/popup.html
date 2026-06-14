@@ -98,6 +98,33 @@
     </label>
   </div>
 
+  <hr />
+
+  <div class="section subtitle-label">Voice synthesis</div>
+
+  <div class="section">
+    <label class="toggle-row">
+      <span>Enable voice</span>
+      <label class="switch">
+        <input type="checkbox" id="tts-enabled" />
+        <span class="slider"></span>
+      </label>
+    </label>
+  </div>
+
+  <div class="section" id="tts-options">
+    <label>Voice gender</label>
+    <select id="tts-voice">
+      <option value="female">Female</option>
+      <option value="male">Male</option>
+    </select>
+  </div>
+
+  <div class="section" id="tts-rate-section">
+    <label>Speed: <span id="tts-rate-label">1.0x</span></label>
+    <input id="tts-rate" type="range" min="0.5" max="2" step="0.1" value="1.0" style="width:100%" />
+  </div>
+
   <div class="section">
     <button id="save-btn">Apply settings</button>
   </div>
