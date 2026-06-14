@@ -7,7 +7,7 @@ from typing import Callable, Awaitable
 from .audio_capture import AudioCapture
 from .config import Config
 from .engines.stt import STTEngine, WhisperAPIEngine, LocalWhisperEngine
-from .engines.translation import TranslationEngine, ClaudeEngine, CursorEngine, MyMemoryEngine, OpenAIEngine, OllamaEngine
+from .engines.translation import TranslationEngine, ClaudeEngine, CursorEngine, LingvaEngine, MyMemoryEngine, OpenAIEngine, OllamaEngine
 
 
 def build_stt_engine(cfg: Config) -> STTEngine:
@@ -21,7 +21,12 @@ def build_stt_engine(cfg: Config) -> STTEngine:
 
 def build_translation_engine(cfg: Config) -> TranslationEngine:
     if cfg.translation.engine == "mymemory":
+        import traceback
+        print("[Pipeline] WARNING: building MyMemoryEngine — stack:")
+        traceback.print_stack()
         return MyMemoryEngine()
+    if cfg.translation.engine == "lingva":
+        return LingvaEngine()
     if cfg.translation.engine == "openai":
         return OpenAIEngine(
             api_key=cfg.translation.openai.api_key,
@@ -127,12 +132,13 @@ class Pipeline:
                 )
             return
 
+        source_lang = self._cfg.translation.source_language or detected_lang
         print(f"[STT] transcript [{detected_lang}]: {transcript[:120]}")
-        print(f"[Pipeline] translating to '{self._cfg.translation.target_language}' "
+        print(f"[Pipeline] translating {source_lang} -> '{self._cfg.translation.target_language}' "
               f"using engine '{self._cfg.translation.engine}'")
 
         translation = await self._translation.translate(
-            transcript, self._cfg.translation.target_language, detected_lang
+            transcript, self._cfg.translation.target_language, source_lang
         )
 
         print(f"[Pipeline] translation result: {translation[:120]}")

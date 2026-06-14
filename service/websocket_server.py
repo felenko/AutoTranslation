@@ -22,6 +22,9 @@ class SubtitleServer:
     async def broadcast_subtitle(self, original: str, translation: str) -> None:
         if not self._clients:
             return
+        if "MYMEMORY WARNING" in translation.upper():
+            print(f"[WS] blocked MyMemory quota message from reaching extension")
+            return
         msg = json.dumps({"type": "subtitle", "original": original, "translation": translation})
         print(f"[WS] broadcasting to {len(self._clients)} client(s): translation={translation[:60]!r}")
         await asyncio.gather(
@@ -63,7 +66,9 @@ class SubtitleServer:
         if msg.get("type") == "update_config":
             cfg = load_config()
             patch = msg.get("config", {})
+            print(f"[WS] update_config received: {patch}")
             _apply_patch(cfg, patch)
+            print(f"[WS] after patch: engine={cfg.translation.engine} lang={cfg.translation.target_language}")
             save_config(cfg)
             self._cfg = cfg
             await self._on_config_change(cfg)
@@ -90,6 +95,7 @@ def _config_to_dict(cfg: Config) -> dict:
     return {
         "stt_engine": cfg.stt.engine,
         "translation_engine": cfg.translation.engine,
+        "source_language": cfg.translation.source_language,
         "target_language": cfg.translation.target_language,
         "ollama_host": cfg.translation.ollama.host,
         "ollama_model": cfg.translation.ollama.model,
@@ -105,8 +111,10 @@ def _apply_patch(cfg: Config, patch: dict) -> None:
         cfg.stt.engine = patch["stt_engine"]
     if "translation_engine" in patch:
         engine = patch["translation_engine"]
-        if engine in ("mymemory", "claude", "openai", "ollama", "cursor"):
+        if engine in ("mymemory", "lingva", "claude", "openai", "ollama", "cursor"):
             cfg.translation.engine = engine
+    if "source_language" in patch:
+        cfg.translation.source_language = patch["source_language"]
     if "target_language" in patch:
         cfg.translation.target_language = patch["target_language"]
     if "ollama_host" in patch:

@@ -12,7 +12,7 @@ class LocalWhisperEngine(STTEngine):
             f"[WhisperLocal] loading model '{model_size}' "
             "(first run downloads ~150 MB from Hugging Face, then caches locally)..."
         )
-        self._model = WhisperModel(model_size, device="cpu", compute_type="int8")
+        self._model = WhisperModel(model_size, device="cpu", compute_type="int8", num_workers=2)
         print(f"[WhisperLocal] model '{model_size}' ready")
 
     async def transcribe(self, audio_bytes: bytes, sample_rate: int) -> str:
@@ -21,6 +21,6 @@ class LocalWhisperEngine(STTEngine):
 
     def _run(self, audio_bytes: bytes, sample_rate: int) -> tuple[str, str]:
         audio = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-        segments, info = self._model.transcribe(audio, beam_size=5)
+        segments, info = self._model.transcribe(audio, beam_size=1, vad_filter=True)
         text = " ".join(seg.text for seg in segments).strip()
         return text, info.language

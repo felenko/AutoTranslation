@@ -4,6 +4,8 @@ function applyConfig(c) {
   if (!c) return;
   if (c.stt_engine) $("stt-engine").value = c.stt_engine;
   if (c.translation_engine) $("translation-engine").value = c.translation_engine;
+  if (c.chunk_duration) { $("chunk-duration").value = c.chunk_duration; $("chunk-label").textContent = parseFloat(c.chunk_duration).toFixed(1) + "s"; }
+  if (c.source_language !== undefined) $("source-language").value = c.source_language || "";
   if (c.target_language) $("target-language").value = c.target_language;
   if (c.ollama_model) $("ollama-model").value = c.ollama_model;
   if (c.cursor_model && $("cursor-model")) $("cursor-model").value = c.cursor_model;
@@ -35,6 +37,10 @@ chrome.runtime.sendMessage({ type: "get_ui_settings" }, (res) => {
   if (uiPrefs.showOriginal) $("show-original").checked = true;
 });
 
+$("chunk-duration").addEventListener("input", () => {
+  $("chunk-label").textContent = parseFloat($("chunk-duration").value).toFixed(1) + "s";
+});
+
 // Live updates from the service (config push, connection status)
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === "config") {
@@ -62,6 +68,8 @@ $("save-btn").addEventListener("click", () => {
   const configPatch = {
     stt_engine: $("stt-engine").value,
     translation_engine: $("translation-engine").value,
+    chunk_duration: parseFloat($("chunk-duration").value),
+    source_language: $("source-language").value.trim(),
     target_language: $("target-language").value.trim() || "English",
     ollama_model: $("ollama-model").value.trim() || "llama3",
     cursor_model: ($("cursor-model")?.value ?? "").trim() || "claude-3-5-sonnet",

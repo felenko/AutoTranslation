@@ -22,6 +22,11 @@
   </div>
 
   <div class="section">
+    <label>Source language</label>
+    <input id="source-language" type="text" placeholder="e.g. Russian (leave blank = auto)" />
+  </div>
+
+  <div class="section">
     <label>Target language</label>
     <input id="target-language" type="text" placeholder="e.g. English, Spanish" />
   </div>
@@ -37,8 +42,8 @@
   <div class="section">
     <label>Translation engine</label>
     <select id="translation-engine">
-      <option value="mymemory">MyMemory (free, no key)</option>
-      <option value="cursor">Cursor AI (no key, via MyMemory fallback)</option>
+      <option value="cursor">Lingva / Cursor (free, no limit)</option>
+      <option value="mymemory">MyMemory (free, 500 req/day)</option>
       <option value="claude">Claude (Anthropic)</option>
       <option value="openai">OpenAI GPT</option>
       <option value="ollama">Ollama (local)</option>
@@ -58,6 +63,12 @@
   <div class="section" id="ollama-section" style="display:none">
     <label>Ollama model</label>
     <input id="ollama-model" type="text" placeholder="e.g. llama3" />
+  </div>
+
+  <div class="section">
+    <label>Chunk size: <span id="chunk-label">4.0s</span></label>
+    <input id="chunk-duration" type="range" min="1.5" max="8" step="0.5" value="4.0" style="width:100%" />
+    <div class="hint">Larger = better quality, more lag. Smaller = faster, may cut sentences.</div>
   </div>
 
   <hr />

@@ -7,6 +7,8 @@
   let overlay = null;
   let hideTimer = null;
   let uiSettings = {};
+  const MAX_LINES = 2;
+  let subtitleBuffer = []; // [{original, translation}]
 
   function refreshUISettings(callback) {
     chrome.runtime.sendMessage({ type: "get_ui_settings" }, (res) => {
@@ -34,21 +36,30 @@
   }
 
   function showSubtitle(original, translation) {
+    subtitleBuffer.push({ original, translation });
+    if (subtitleBuffer.length > MAX_LINES) subtitleBuffer.shift();
+
     const el = getOrCreateOverlay();
     applyUISettings(el);
 
-    if (uiSettings.showOriginal) {
-      el.innerHTML = `<span class="at-original">${escapeHtml(original)}</span><span class="at-translation">${escapeHtml(translation)}</span>`;
-    } else {
-      el.innerHTML = `<span class="at-translation">${escapeHtml(translation)}</span>`;
-    }
+    el.innerHTML = subtitleBuffer.map((entry, i) => {
+      const isLatest = i === subtitleBuffer.length - 1;
+      const cls = isLatest ? "at-latest" : "at-prev";
+      if (uiSettings.showOriginal && isLatest) {
+        return `<div class="at-line ${cls}"><span class="at-original">${escapeHtml(entry.original)}</span>${escapeHtml(entry.translation)}</div>`;
+      }
+      return `<div class="at-line ${cls}">${escapeHtml(entry.translation)}</div>`;
+    }).join("");
 
     el.classList.add("at-visible");
 
     if (hideTimer) clearTimeout(hideTimer);
     const wordCount = translation.split(/\s+/).length;
     const duration = Math.min(Math.max(wordCount * 350, 3000), 8000);
-    hideTimer = setTimeout(() => el.classList.remove("at-visible"), duration);
+    hideTimer = setTimeout(() => {
+      el.classList.remove("at-visible");
+      subtitleBuffer = [];
+    }, duration);
   }
 
   function escapeHtml(str) {
@@ -62,6 +73,7 @@
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === "subtitle") {
+      console.log("[AutoTranslation] subtitle received:", JSON.stringify(msg));
       showSubtitle(msg.original, msg.translation);
     }
     if (msg.type === "update_ui") {

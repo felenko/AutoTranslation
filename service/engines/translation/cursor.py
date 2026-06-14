@@ -16,7 +16,7 @@ import os
 import sqlite3
 
 from .base import TranslationEngine
-from .mymemory import MyMemoryEngine
+from .lingva import LingvaEngine
 
 _CURSOR_DB = os.path.expandvars(r"%APPDATA%\Cursor\User\globalStorage\state.vscdb")
 
@@ -50,14 +50,11 @@ class CursorEngine(TranslationEngine):
 
     def __init__(self, model: str = "claude-3-5-sonnet", token: str = ""):
         self._token = token or discover_cursor_token()
-        self._fallback = MyMemoryEngine()
+        self._fallback = LingvaEngine()
         if self._token:
-            print(
-                "[Cursor] token discovered — gRPC endpoint investigation pending, "
-                "using MyMemory as fallback."
-            )
+            print("[Cursor] token discovered — gRPC endpoint investigation pending, using Lingva as fallback.")
         else:
-            print("[Cursor] no token found — using MyMemory fallback.")
+            print("[Cursor] no token found — using Lingva fallback.")
 
     async def translate(self, text: str, target_language: str, source_language: str = "en") -> str:
         return await self._fallback.translate(text, target_language, source_language)

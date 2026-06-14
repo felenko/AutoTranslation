@@ -64,6 +64,7 @@ class CursorConfig:
 @dataclass
 class TranslationConfig:
     engine: Literal["mymemory", "claude", "openai", "ollama", "cursor"] = "mymemory"
+    source_language: str = ""
     target_language: str = "English"
     claude: ClaudeConfig = field(default_factory=ClaudeConfig)
     openai: OpenAITranslationConfig = field(default_factory=OpenAITranslationConfig)
@@ -119,6 +120,7 @@ def load_config(path: str = CONFIG_PATH) -> Config:
     cu = tr.get("cursor", {})
     cfg.translation = TranslationConfig(
         engine=tr.get("engine", cfg.translation.engine),
+        source_language=tr.get("source_language", cfg.translation.source_language),
         target_language=tr.get("target_language", cfg.translation.target_language),
         claude=ClaudeConfig(api_key=cl.get("api_key", ""), model=cl.get("model", "claude-sonnet-4-6")),
         openai=OpenAITranslationConfig(api_key=oa.get("api_key", ""), model=oa.get("model", "gpt-4o")),
@@ -148,6 +150,7 @@ def save_config(cfg: Config, path: str = CONFIG_PATH) -> None:
         },
         "translation": {
             "engine": cfg.translation.engine,
+            "source_language": cfg.translation.source_language,
             "target_language": cfg.translation.target_language,
             "claude": {
                 "api_key": cfg.translation.claude.api_key,
