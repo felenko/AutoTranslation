@@ -5,6 +5,7 @@ Requires: pyaudiowpatch
 """
 import asyncio
 import struct
+import time
 from typing import AsyncIterator
 
 import pyaudiowpatch as pyaudio
@@ -29,10 +30,12 @@ class AudioCapture:
         self._playback_device = playback_device
         self._original_volume = original_volume
 
-    async def stream(self) -> AsyncIterator[bytes]:
-        """Yields mono 16-bit PCM chunks. Chunk size follows _chunk_duration dynamically."""
+    async def stream(self) -> AsyncIterator[tuple[bytes, float]]:
+        """Yields (pcm_chunk, captured_at) pairs. captured_at is monotonic time when the
+        chunk was fully assembled — used by the pipeline to discard chunks that fall
+        inside a TTS mute window even if they are dequeued after the window expires."""
         loop = asyncio.get_event_loop()
-        queue: asyncio.Queue[bytes] = asyncio.Queue()
+        queue: asyncio.Queue[tuple[bytes, float]] = asyncio.Queue()
 
         def _run():
             pa = pyaudio.PyAudio()
@@ -90,7 +93,9 @@ class AudioCapture:
                         if len(buffer) >= target:
                             chunk = buffer[:target]
                             buffer = buffer[target:]
-                            asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
+                            asyncio.run_coroutine_threadsafe(
+                                queue.put((chunk, time.monotonic())), loop
+                            )
                 finally:
                     in_stream.stop_stream()
                     in_stream.close()
@@ -102,7 +107,7 @@ class AudioCapture:
 
         loop.run_in_executor(None, _run)
         while True:
-            yield await queue.get()
+            yield await queue.get()  # yields (chunk, captured_at)
 
 
 def list_loopback_devices() -> None:

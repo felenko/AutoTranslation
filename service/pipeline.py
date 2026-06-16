@@ -145,15 +145,12 @@ class Pipeline:
         self._translation = build_translation_engine(cfg)
 
     async def run(self) -> None:
-        # Sequential: each chunk is fully processed (STT → translate → TTS → broadcast)
-        # before the next starts. The audio queue buffers everything so no speech is
-        # lost; the pipeline catches up naturally when the speaker pauses.
-        async for chunk in self._capture.stream():
-            await self._process(chunk)
+        async for chunk, captured_at in self._capture.stream():
+            await self._process(chunk, captured_at)
 
-    async def _process(self, audio: bytes) -> None:
+    async def _process(self, audio: bytes, captured_at: float) -> None:
         try:
-            await self._process_inner(audio)
+            await self._process_inner(audio, captured_at)
         except Exception as exc:
             import traceback
             print(f"[Pipeline] error: {exc}")
@@ -185,40 +182,45 @@ class Pipeline:
                 return True
         return False
 
-    def _is_tts_echo(self, transcript: str, detected_lang: str = "") -> bool:
+    def _is_tts_echo(self, transcript: str, detected_lang: str = "", captured_at: float = 0.0) -> bool:
         now = time.monotonic()
         self._recent_tts = [(t, ts) for t, ts in self._recent_tts if now - ts < 15.0]
         if not self._recent_tts:
             return False
 
-        # Language mismatch: source is configured (e.g. Russian) but STT detected a
-        # different language — almost certainly a TTS echo leaking into the loopback.
+        # Language mismatch: source is configured (e.g. Russian) but STT detected
+        # something else — almost certainly TTS echo leaking into the loopback.
         if detected_lang and self._cfg.translation.source_language:
-            cfg = self._cfg.translation.source_language.lower()
+            src = self._cfg.translation.source_language.lower()
             det = detected_lang.lower()
-            if not (cfg.startswith(det) or det.startswith(cfg[:2])):
-                print(f"[echo] lang mismatch ({detected_lang} ≠ {cfg}): {transcript!r}")
+            if not (src.startswith(det) or det.startswith(src[:2])):
+                print(f"[echo] lang mismatch ({detected_lang} ≠ {src}): {transcript!r}")
                 return True
 
         norm = transcript.lower().strip(" .,!?-")
-        if len(norm) < 3:
-            return True  # too short to be real when TTS was recently played
+        # Only suppress very short utterances if TTS was playing VERY recently (3 s),
+        # not for the full 15-second history — real speech can be short too.
+        very_recent = any(now - ts < 3.0 for _, ts in self._recent_tts)
+        if len(norm) < 3 and very_recent:
+            return True
 
         for text, _ in self._recent_tts:
             ref = text.lower().strip(" .,!?-")
-            # Full-text similarity
             if difflib.SequenceMatcher(None, norm, ref).ratio() > 0.65:
                 print(f"[echo] suppressed: {transcript!r}")
                 return True
-            # Partial match: transcript is a tail/head fragment of a TTS phrase
             if len(norm) >= 5 and (norm in ref or ref.endswith(norm) or ref.startswith(norm)):
                 print(f"[echo] partial suppressed: {transcript!r}")
                 return True
 
         return False
 
-    async def _process_inner(self, audio: bytes) -> None:
-        if time.monotonic() < self._tts_mute_until:
+    async def _process_inner(self, audio: bytes, captured_at: float) -> None:
+        # Use the chunk's capture timestamp (not wall-clock now) so that chunks
+        # which were queued during a mute window are correctly discarded even if
+        # they are dequeued after the mute has expired.
+        if captured_at < self._tts_mute_until:
+            print(f"[mute] dropping chunk captured at {captured_at:.1f} (mute until {self._tts_mute_until:.1f})")
             return
 
         whisper_lang = _to_whisper_lang(self._cfg.translation.source_language)
@@ -231,7 +233,12 @@ class Pipeline:
 
         print(f"[original] [{detected_lang}] {transcript}")
 
-        if self._is_tts_echo(transcript, detected_lang):
+        if self._is_tts_echo(transcript, detected_lang, captured_at):
+            return
+
+        if not self._cfg.translation.enabled:
+            # Translation disabled — show original transcript as subtitle
+            await self._on_subtitle(transcript, transcript, None)
             return
 
         source_lang = self._cfg.translation.source_language or detected_lang

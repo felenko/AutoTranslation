@@ -109,6 +109,7 @@ def _config_to_dict(cfg: Config) -> dict:
     from .audio_capture import list_loopback_device_names, list_output_device_names
     return {
         "stt_engine": cfg.stt.engine,
+        "translation_enabled": cfg.translation.enabled,
         "translation_engine": cfg.translation.engine,
         "source_language": cfg.translation.source_language,
         "target_language": cfg.translation.target_language,
@@ -133,6 +134,8 @@ def _config_to_dict(cfg: Config) -> dict:
 def _apply_patch(cfg: Config, patch: dict) -> None:
     if "stt_engine" in patch:
         cfg.stt.engine = patch["stt_engine"]
+    if "translation_enabled" in patch:
+        cfg.translation.enabled = bool(patch["translation_enabled"])
     if "translation_engine" in patch:
         engine = patch["translation_engine"]
         if engine in ("mymemory", "lingva", "claude", "openai", "ollama", "cursor"):

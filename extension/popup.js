@@ -17,6 +17,7 @@ function populateDeviceSelect(id, devices, selected) {
 function applyConfig(c) {
   if (!c) return;
   if (c.stt_engine) $("stt-engine").value = c.stt_engine;
+  if (c.translation_enabled !== undefined) $("translation-enabled").checked = !!c.translation_enabled;
   if (c.translation_engine) $("translation-engine").value = c.translation_engine;
   if (c.chunk_duration) { $("chunk-duration").value = c.chunk_duration; $("chunk-label").textContent = parseFloat(c.chunk_duration).toFixed(1) + "s"; }
   if (c.source_language !== undefined) $("source-language").value = c.source_language || "";
@@ -135,6 +136,7 @@ $("toggle-subtitles").addEventListener("change", (e) => {
 $("save-btn").addEventListener("click", () => {
   const configPatch = {
     stt_engine: $("stt-engine").value,
+    translation_enabled: $("translation-enabled").checked,
     translation_engine: $("translation-engine").value,
     chunk_duration: parseFloat($("chunk-duration").value),
     source_language: $("source-language").value.trim(),

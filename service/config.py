@@ -65,6 +65,7 @@ class CursorConfig:
 
 @dataclass
 class TranslationConfig:
+    enabled: bool = True
     engine: Literal["mymemory", "claude", "openai", "ollama", "cursor"] = "mymemory"
     source_language: str = ""
     target_language: str = "English"
@@ -133,6 +134,7 @@ def load_config(path: str = CONFIG_PATH) -> Config:
     ol = tr.get("ollama", {})
     cu = tr.get("cursor", {})
     cfg.translation = TranslationConfig(
+        enabled=bool(tr.get("enabled", cfg.translation.enabled)),
         engine=tr.get("engine", cfg.translation.engine),
         source_language=tr.get("source_language", cfg.translation.source_language),
         target_language=tr.get("target_language", cfg.translation.target_language),
@@ -173,6 +175,7 @@ def save_config(cfg: Config, path: str = CONFIG_PATH) -> None:
             },
         },
         "translation": {
+            "enabled": cfg.translation.enabled,
             "engine": cfg.translation.engine,
             "source_language": cfg.translation.source_language,
             "target_language": cfg.translation.target_language,
