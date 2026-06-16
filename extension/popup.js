@@ -10,6 +10,13 @@ function applyConfig(c) {
   if (c.ollama_model) $("ollama-model").value = c.ollama_model;
   if (c.cursor_model && $("cursor-model")) $("cursor-model").value = c.cursor_model;
   if (c.claude_model) $("claude-model").value = c.claude_model;
+  // TTS is server-side now — load from server config
+  if (c.tts_enabled !== undefined) $("tts-enabled").checked = !!c.tts_enabled;
+  if (c.tts_voice_gender) $("tts-voice").value = c.tts_voice_gender;
+  if (c.tts_rate !== undefined) {
+    $("tts-rate").value = c.tts_rate;
+    $("tts-rate-label").textContent = parseFloat(c.tts_rate).toFixed(1) + "x";
+  }
   toggleEngineSections();
 }
 
@@ -35,9 +42,6 @@ chrome.runtime.sendMessage({ type: "get_ui_settings" }, (res) => {
   if (uiPrefs.fontSize) $("font-size").value = uiPrefs.fontSize.replace("px", "");
   if (uiPrefs.position) $("position").value = uiPrefs.position;
   if (uiPrefs.showOriginal) $("show-original").checked = true;
-  $("tts-enabled").checked = !!uiPrefs.ttsEnabled;
-  if (uiPrefs.ttsVoice) $("tts-voice").value = uiPrefs.ttsVoice;
-  if (uiPrefs.ttsRate) { $("tts-rate").value = uiPrefs.ttsRate; $("tts-rate-label").textContent = parseFloat(uiPrefs.ttsRate).toFixed(1) + "x"; }
 });
 
 $("tts-rate").addEventListener("input", () => {
@@ -46,6 +50,28 @@ $("tts-rate").addEventListener("input", () => {
 
 $("chunk-duration").addEventListener("input", () => {
   $("chunk-label").textContent = parseFloat($("chunk-duration").value).toFixed(1) + "s";
+});
+
+// --- Volume sliders (live, stored locally — no server round-trip needed) ---
+chrome.storage.local.get(["originalVolume", "ttsVolume"], (res) => {
+  const ov = res.originalVolume ?? 100;
+  const tv = res.ttsVolume ?? 100;
+  $("orig-volume").value = ov;
+  $("orig-vol-label").textContent = ov + "%";
+  $("tts-volume").value = tv;
+  $("tts-vol-label").textContent = tv + "%";
+});
+
+$("orig-volume").addEventListener("input", () => {
+  const val = parseInt($("orig-volume").value);
+  $("orig-vol-label").textContent = val + "%";
+  chrome.storage.local.set({ originalVolume: val });
+});
+
+$("tts-volume").addEventListener("input", () => {
+  const val = parseInt($("tts-volume").value);
+  $("tts-vol-label").textContent = val + "%";
+  chrome.storage.local.set({ ttsVolume: val });
 });
 
 // Live updates from the service (config push, connection status)
@@ -81,15 +107,15 @@ $("save-btn").addEventListener("click", () => {
     ollama_model: $("ollama-model").value.trim() || "llama3",
     cursor_model: ($("cursor-model")?.value ?? "").trim() || "claude-3-5-sonnet",
     claude_model: $("claude-model").value.trim() || "claude-sonnet-4-6",
+    tts_enabled: $("tts-enabled").checked,
+    tts_voice_gender: $("tts-voice").value,
+    tts_rate: parseFloat($("tts-rate").value),
   };
 
   const uiPrefs = {
     fontSize: $("font-size").value + "px",
     position: $("position").value,
     showOriginal: $("show-original").checked,
-    ttsEnabled: $("tts-enabled").checked,
-    ttsVoice: $("tts-voice").value,
-    ttsRate: parseFloat($("tts-rate").value),
   };
 
   chrome.runtime.sendMessage({ type: "set_ui_settings", settings: uiPrefs });

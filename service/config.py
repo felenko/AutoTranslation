@@ -73,11 +73,19 @@ class TranslationConfig:
 
 
 @dataclass
+class TTSConfig:
+    enabled: bool = False
+    voice_gender: str = "female"
+    rate: float = 1.0
+
+
+@dataclass
 class Config:
     server: ServerConfig = field(default_factory=ServerConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     stt: STTConfig = field(default_factory=STTConfig)
     translation: TranslationConfig = field(default_factory=TranslationConfig)
+    tts: TTSConfig = field(default_factory=TTSConfig)
 
 
 def load_config(path: str = CONFIG_PATH) -> Config:
@@ -127,6 +135,12 @@ def load_config(path: str = CONFIG_PATH) -> Config:
         ollama=OllamaConfig(host=ol.get("host", "http://localhost:11434"), model=ol.get("model", "llama3")),
         cursor=CursorConfig(model=cu.get("model", "claude-3-5-sonnet"), token=cu.get("token", "")),
     )
+    tts = raw.get("tts", {})
+    cfg.tts = TTSConfig(
+        enabled=tts.get("enabled", False),
+        voice_gender=tts.get("voice_gender", "female"),
+        rate=float(tts.get("rate", 1.0)),
+    )
     return cfg
 
 
@@ -168,6 +182,11 @@ def save_config(cfg: Config, path: str = CONFIG_PATH) -> None:
                 "model": cfg.translation.cursor.model,
                 "token": cfg.translation.cursor.token,
             },
+        },
+        "tts": {
+            "enabled": cfg.tts.enabled,
+            "voice_gender": cfg.tts.voice_gender,
+            "rate": cfg.tts.rate,
         },
     }
     with open(path, "w") as f:

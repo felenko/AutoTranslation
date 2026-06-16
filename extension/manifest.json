@@ -3,7 +3,7 @@
   "name": "AutoTranslation",
   "version": "0.1.0",
   "description": "Real-time AI subtitles for streaming services",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "alarms"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

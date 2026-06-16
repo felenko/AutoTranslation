@@ -20,7 +20,8 @@ class AudioCapture:
     async def stream(self) -> AsyncIterator[bytes]:
         """Yields mono 16-bit PCM chunks. Chunk size follows _chunk_duration dynamically."""
         loop = asyncio.get_event_loop()
-        queue: asyncio.Queue[bytes] = asyncio.Queue()
+        # maxsize=2: if pipeline falls behind, old chunks are dropped so we stay current.
+        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=2)
 
         def _run():
             pa = pyaudio.PyAudio()
@@ -50,8 +51,16 @@ class AudioCapture:
                         buffer += pcm
                         target = int(self._sample_rate * self._chunk_duration) * 2  # bytes
                         if len(buffer) >= target:
-                            asyncio.run_coroutine_threadsafe(queue.put(buffer[:target]), loop)
+                            chunk = buffer[:target]
                             buffer = buffer[target:]
+                            # Schedule a non-blocking put; silently drop if queue is full
+                            # (pipeline is behind — better to skip than to process stale audio).
+                            def _put(q=queue, c=chunk):
+                                try:
+                                    q.put_nowait(c)
+                                except asyncio.QueueFull:
+                                    pass
+                            loop.call_soon_threadsafe(_put)
                 finally:
                     stream.stop_stream()
                     stream.close()

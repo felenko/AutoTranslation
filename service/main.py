@@ -9,14 +9,10 @@ async def main() -> None:
     cfg = load_config()
     server = SubtitleServer(cfg, on_config_change=_noop)
 
-    async def on_subtitle(original: str, translation: str) -> None:
-        print(f"[on_subtitle] original={original[:60]!r}")
-        print(f"[on_subtitle] translation={translation[:60]!r}")
-        print(f"[on_subtitle] connected clients: {len(server._clients)}")
+    async def on_subtitle(original: str, translation: str, audio: bytes = None) -> None:
         if not server._clients:
-            print("[WS] WARNING: no extension connected — subtitles won't appear in browser")
-        await server.broadcast_subtitle(original, translation)
-        print(f"[on_subtitle] broadcast complete")
+            print("[WS] no extension connected — subtitles won't appear in browser")
+        await server.broadcast_subtitle(original, translation, audio)
 
     pipeline = Pipeline(cfg, on_subtitle=on_subtitle)
 
@@ -26,6 +22,15 @@ async def main() -> None:
     server._on_config_change = on_config_change
 
     print("[AutoTranslation] starting service...")
+    if cfg.tts.enabled:
+        try:
+            import edge_tts  # noqa
+            print(f"[TTS] edge-tts ready, gender={cfg.tts.voice_gender}, rate={cfg.tts.rate}")
+        except ImportError as e:
+            import traceback
+            print(f"[TTS] WARNING: edge-tts failed to import: {e}")
+            traceback.print_exc()
+            print("[TTS] Voice synthesis will be skipped.")
     await asyncio.gather(
         server.serve(cfg.server.host, cfg.server.port),
         pipeline.run(),

@@ -4,7 +4,7 @@ from .base import TranslationEngine
 
 class ClaudeEngine(TranslationEngine):
     def __init__(self, api_key: str, model: str = "claude-sonnet-4-6"):
-        self._client = anthropic.AsyncAnthropic(api_key=api_key)
+        self._client = anthropic.AsyncAnthropic(api_key=api_key or None)  # None → reads ANTHROPIC_API_KEY from env
         self._model = model
 
     async def translate(self, text: str, target_language: str, source_language: str = "en") -> str:

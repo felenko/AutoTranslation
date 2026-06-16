@@ -9,7 +9,13 @@ let subtitlesEnabled = true;
 let cachedConfig = null;
 
 function connect() {
-  ws = new WebSocket(WS_URL);
+  try {
+    ws = new WebSocket(WS_URL);
+  } catch (e) {
+    console.warn("[AutoTranslation] WebSocket() threw:", e);
+    setTimeout(connect, RECONNECT_DELAY_MS);
+    return;
+  }
 
   ws.onopen = () => {
     console.log("[AutoTranslation] connected to service");
@@ -41,13 +47,23 @@ function connect() {
     console.log("[AutoTranslation] disconnected, reconnecting...");
     broadcastToTabs({ type: "status", status: "disconnected" });
     notifyPopup({ type: "status", status: "disconnected" });
+    ws = null;
     setTimeout(connect, RECONNECT_DELAY_MS);
   };
 
-  ws.onerror = (err) => {
-    console.error("[AutoTranslation] WS error", err);
-  };
+  ws.onerror = () => { ws?.close(); };
 }
+
+// Chrome alarms survive service worker sleep — setTimeout/setInterval do not.
+chrome.alarms.create("keepAlive", { periodInMinutes: 25 / 60 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== "keepAlive") return;
+  if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+    connect();
+  } else if (ws.readyState === WebSocket.OPEN) {
+    try { ws.send(JSON.stringify({ type: "ping" })); } catch { connect(); }
+  }
+});
 
 function broadcastToTabs(msg) {
   chrome.tabs.query({}, (tabs) => {
@@ -110,4 +126,4 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 });
 
-connect();
+setTimeout(connect, 0);

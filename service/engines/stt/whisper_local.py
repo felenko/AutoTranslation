@@ -21,6 +21,16 @@ class LocalWhisperEngine(STTEngine):
 
     def _run(self, audio_bytes: bytes, sample_rate: int) -> tuple[str, str]:
         audio = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-        segments, info = self._model.transcribe(audio, beam_size=1, vad_filter=True)
+        segments, info = self._model.transcribe(
+            audio,
+            beam_size=1,
+            vad_filter=True,
+            # Prevent segments within the same chunk from conditioning on each other —
+            # the main cause of phrases from one segment bleeding into the next.
+            condition_on_previous_text=False,
+            # Higher threshold = more aggressive silence rejection; reduces
+            # hallucinations when the loopback carries TTS or near-silence.
+            no_speech_threshold=0.8,
+        )
         text = " ".join(seg.text for seg in segments).strip()
         return text, info.language

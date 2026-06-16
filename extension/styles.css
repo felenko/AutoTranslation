@@ -21,17 +21,8 @@
 #autotranslation-overlay .at-line {
   display: block;
   text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.9);
-  transition: opacity 0.3s ease;
-}
-
-#autotranslation-overlay .at-prev {
-  opacity: 0.45;
-  font-size: 0.85em;
-  margin-bottom: 4px;
-}
-
-#autotranslation-overlay .at-latest {
-  opacity: 1;
+  margin-bottom: 3px;
+  transition: opacity 0.4s ease, font-size 0.4s ease;
 }
 
 #autotranslation-overlay .at-original {
