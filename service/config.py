@@ -17,6 +17,7 @@ class AudioConfig:
     chunk_duration_seconds: float = 4.0
     sample_rate: int = 16000
     capture_device: str = ""  # partial name match, e.g. "CABLE" for VB-Audio Virtual Cable
+    original_volume: float = 1.0  # passthrough volume (0.0–1.0)
 
 
 @dataclass
@@ -79,6 +80,7 @@ class TTSConfig:
     voice_gender: str = "female"
     rate: float = 1.0
     playback_device: str = ""  # partial name match; empty = play in browser via extension
+    tts_volume: float = 1.0
 
 
 @dataclass
@@ -110,6 +112,7 @@ def load_config(path: str = CONFIG_PATH) -> Config:
         chunk_duration_seconds=a.get("chunk_duration_seconds", cfg.audio.chunk_duration_seconds),
         sample_rate=a.get("sample_rate", cfg.audio.sample_rate),
         capture_device=a.get("capture_device", cfg.audio.capture_device),
+        original_volume=float(a.get("original_volume", cfg.audio.original_volume)),
     )
     stt = raw.get("stt", {})
     wa = stt.get("whisper_api", {})
@@ -144,6 +147,7 @@ def load_config(path: str = CONFIG_PATH) -> Config:
         voice_gender=tts.get("voice_gender", "female"),
         rate=float(tts.get("rate", 1.0)),
         playback_device=tts.get("playback_device", ""),
+        tts_volume=float(tts.get("tts_volume", 1.0)),
     )
     return cfg
 
@@ -156,6 +160,7 @@ def save_config(cfg: Config, path: str = CONFIG_PATH) -> None:
             "chunk_duration_seconds": cfg.audio.chunk_duration_seconds,
             "sample_rate": cfg.audio.sample_rate,
             "capture_device": cfg.audio.capture_device,
+            "original_volume": cfg.audio.original_volume,
         },
         "stt": {
             "engine": cfg.stt.engine,
@@ -193,6 +198,7 @@ def save_config(cfg: Config, path: str = CONFIG_PATH) -> None:
             "voice_gender": cfg.tts.voice_gender,
             "rate": cfg.tts.rate,
             "playback_device": cfg.tts.playback_device,
+            "tts_volume": cfg.tts.tts_volume,
         },
     }
     with open(path, "w") as f:

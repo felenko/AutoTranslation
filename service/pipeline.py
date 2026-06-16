@@ -102,6 +102,8 @@ class Pipeline:
             chunk_duration=cfg.audio.chunk_duration_seconds,
             sample_rate=cfg.audio.sample_rate,
             capture_device=cfg.audio.capture_device,
+            playback_device=cfg.tts.playback_device,
+            original_volume=cfg.audio.original_volume,
         )
         self._tts_mute_until = 0.0
         self._recent_tts: list[tuple[str, float]] = []  # (text, monotonic timestamp)
@@ -114,6 +116,8 @@ class Pipeline:
         if cfg.audio.chunk_duration_seconds != old.audio.chunk_duration_seconds:
             self._capture._chunk_duration = cfg.audio.chunk_duration_seconds
             print(f"[Pipeline] chunk duration -> {cfg.audio.chunk_duration_seconds}s")
+        if cfg.audio.original_volume != old.audio.original_volume:
+            self._capture._original_volume = cfg.audio.original_volume
 
         stt_changed = (
             cfg.stt.engine != old.stt.engine
@@ -258,7 +262,10 @@ class Pipeline:
                     if self._cfg.tts.playback_device is not None and self._cfg.tts.playback_device != "":
                         # Play through local output device — no audio sent to browser (no echo)
                         loop = asyncio.get_event_loop()
-                        loop.run_in_executor(None, play_locally, raw_audio, self._cfg.tts.playback_device)
+                        loop.run_in_executor(
+                            None, play_locally,
+                            raw_audio, self._cfg.tts.playback_device, self._cfg.tts.tts_volume,
+                        )
                     else:
                         tts_audio = raw_audio  # send to browser for playback
                 else:

@@ -93,7 +93,7 @@ async def synthesize(text: str, target_language: str, gender: str = "female", ra
     return audio_data
 
 
-def play_locally(audio_bytes: bytes, device_name: str = "") -> None:
+def play_locally(audio_bytes: bytes, device_name: str = "", volume: float = 1.0) -> None:
     """Decode MP3 and play through a local output device (blocking — run in executor)."""
     try:
         import miniaudio
@@ -129,7 +129,15 @@ def play_locally(audio_bytes: bytes, device_name: str = "") -> None:
                 output_device_index=device_index,
             )
             try:
+                import struct as _struct
                 pcm = bytes(decoded.samples)
+                if volume != 1.0 and volume > 0:
+                    n = len(pcm) // 2
+                    samples = _struct.unpack(f"<{n}h", pcm)
+                    clamped = (max(-32768, min(32767, int(s * volume))) for s in samples)
+                    pcm = _struct.pack(f"<{n}h", *clamped)
+                elif volume <= 0:
+                    pcm = bytes(len(pcm))
                 chunk_size = 4096
                 for offset in range(0, len(pcm), chunk_size):
                     stream.write(pcm[offset:offset + chunk_size])

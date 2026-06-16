@@ -119,10 +119,12 @@ def _config_to_dict(cfg: Config) -> dict:
         "cursor_model": cfg.translation.cursor.model,
         "chunk_duration": cfg.audio.chunk_duration_seconds,
         "capture_device": cfg.audio.capture_device,
+        "original_volume": cfg.audio.original_volume,
         "tts_enabled": cfg.tts.enabled,
         "tts_voice_gender": cfg.tts.voice_gender,
         "tts_rate": cfg.tts.rate,
         "tts_playback_device": cfg.tts.playback_device,
+        "tts_volume": cfg.tts.tts_volume,
         "loopback_devices": list_loopback_device_names(),
         "output_devices": list_output_device_names(),
     }
@@ -153,6 +155,8 @@ def _apply_patch(cfg: Config, patch: dict) -> None:
         cfg.audio.chunk_duration_seconds = float(patch["chunk_duration"])
     if "capture_device" in patch:
         cfg.audio.capture_device = patch["capture_device"]
+    if "original_volume" in patch:
+        cfg.audio.original_volume = float(patch["original_volume"])
     if "tts_enabled" in patch:
         cfg.tts.enabled = bool(patch["tts_enabled"])
     if "tts_voice_gender" in patch:
@@ -161,3 +165,5 @@ def _apply_patch(cfg: Config, patch: dict) -> None:
         cfg.tts.rate = float(patch["tts_rate"])
     if "tts_playback_device" in patch:
         cfg.tts.playback_device = patch["tts_playback_device"]
+    if "tts_volume" in patch:
+        cfg.tts.tts_volume = float(patch["tts_volume"])

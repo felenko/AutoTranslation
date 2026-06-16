@@ -13,16 +13,25 @@ _READ_SECONDS = 0.1  # internal read size — chunk_duration is accumulated from
 
 
 class AudioCapture:
-    def __init__(self, chunk_duration: float = 4.0, sample_rate: int = 16000, capture_device: str = ""):
+    def __init__(
+        self,
+        chunk_duration: float = 4.0,
+        sample_rate: int = 16000,
+        capture_device: str = "",
+        playback_device: str = "",
+        original_volume: float = 1.0,
+    ):
         self._chunk_duration = chunk_duration
         self._sample_rate = sample_rate
         self._capture_device = capture_device
+        # Passthrough: forward raw captured audio to output device at original_volume.
+        # Both attributes are read every 0.1 s so live updates take effect quickly.
+        self._playback_device = playback_device
+        self._original_volume = original_volume
 
     async def stream(self) -> AsyncIterator[bytes]:
         """Yields mono 16-bit PCM chunks. Chunk size follows _chunk_duration dynamically."""
         loop = asyncio.get_event_loop()
-        # Unbounded — every chunk is kept. Pipeline processes in order and catches up
-        # during speaker pauses; lag is acceptable, missing audio is not.
         queue: asyncio.Queue[bytes] = asyncio.Queue()
 
         def _run():
@@ -33,7 +42,7 @@ class AudioCapture:
                 channels = min(int(device["maxInputChannels"]), 2)
                 read_frames = int(native_rate * _READ_SECONDS)
 
-                stream = pa.open(
+                in_stream = pa.open(
                     format=pyaudio.paInt16,
                     channels=channels,
                     rate=native_rate,
@@ -45,10 +54,36 @@ class AudioCapture:
                     f"[AudioCapture] capturing from '{device['name']}' "
                     f"at {native_rate}Hz, {channels}ch"
                 )
+
+                # Open passthrough output stream if a device is configured.
+                # Uses the same format as the input so no resampling is needed.
+                out_stream = None
+                if self._playback_device:
+                    out_idx = _find_output_device_index(pa, self._playback_device)
+                    if out_idx is not None:
+                        try:
+                            out_stream = pa.open(
+                                format=pyaudio.paInt16,
+                                channels=channels,
+                                rate=native_rate,
+                                output=True,
+                                output_device_index=out_idx,
+                                frames_per_buffer=read_frames,
+                            )
+                            print(f"[AudioCapture] passthrough -> '{self._playback_device}'")
+                        except Exception as exc:
+                            print(f"[AudioCapture] cannot open passthrough output: {exc}")
+
                 buffer = b""
                 try:
                     while True:
-                        raw = stream.read(read_frames, exception_on_overflow=False)
+                        raw = in_stream.read(read_frames, exception_on_overflow=False)
+
+                        # Passthrough: forward raw audio to output device.
+                        if out_stream is not None:
+                            vol = self._original_volume
+                            out_stream.write(_scale_pcm16(raw, vol) if vol != 1.0 else raw)
+
                         pcm = _to_mono_16k(raw, channels, native_rate, self._sample_rate)
                         buffer += pcm
                         target = int(self._sample_rate * self._chunk_duration) * 2  # bytes
@@ -57,8 +92,11 @@ class AudioCapture:
                             buffer = buffer[target:]
                             asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
                 finally:
-                    stream.stop_stream()
-                    stream.close()
+                    in_stream.stop_stream()
+                    in_stream.close()
+                    if out_stream:
+                        out_stream.stop_stream()
+                        out_stream.close()
             finally:
                 pa.terminate()
 
@@ -135,9 +173,30 @@ def _find_loopback_device(pa: pyaudio.PyAudio, name_filter: str = "") -> dict:
             f"No loopback device matching '{name_filter}'. Available: {names}"
         )
 
-    # Default: prefer the system default output's loopback
     default = pa.get_default_wasapi_loopback()
     return default if default else loopbacks[0]
+
+
+def _find_output_device_index(pa: pyaudio.PyAudio, name_filter: str) -> int | None:
+    needle = name_filter.lower()
+    for i in range(pa.get_device_count()):
+        info = pa.get_device_info_by_index(i)
+        if (info.get("maxOutputChannels", 0) > 0
+                and not info.get("isLoopbackDevice")
+                and needle in info["name"].lower()):
+            return i
+    print(f"[AudioCapture] output device not found: {name_filter!r}")
+    return None
+
+
+def _scale_pcm16(data: bytes, volume: float) -> bytes:
+    """Scale 16-bit PCM samples by volume (0.0–1.0). Returns silence for volume=0."""
+    if volume <= 0.0:
+        return bytes(len(data))
+    n = len(data) // 2
+    samples = struct.unpack(f"<{n}h", data)
+    scaled = (max(-32768, min(32767, int(s * volume))) for s in samples)
+    return struct.pack(f"<{n}h", *scaled)
 
 
 def _to_mono_16k(raw: bytes, channels: int, src_rate: int, dst_rate: int) -> bytes:

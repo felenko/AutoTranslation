@@ -1,82 +1,195 @@
-// Injected into every page. Renders the subtitle overlay.
+// Injected into every page. Renders the subtitle sidebar and handles TTS playback.
 
 (function () {
   if (window.__autoTranslationLoaded) return;
   window.__autoTranslationLoaded = true;
 
-  let overlay = null;
-  let hideTimer = null;
+  // ─── State ────────────────────────────────────────────────────────────────
+  let sidebar = null;
+  let sidebarBody = null;
+  let collapsed = false;
+  let userScrolledUp = false;
   let uiSettings = {};
-  const MAX_LINES = 4;
-  const LINE_OPACITY = [0.2, 0.4, 0.65, 1.0];   // oldest → newest
-  const LINE_SIZE   = ["0.72em", "0.82em", "0.91em", "1em"];
-  let subtitleBuffer = []; // [{original, translation}]
 
+  // ─── UI settings ──────────────────────────────────────────────────────────
   function refreshUISettings(callback) {
     chrome.runtime.sendMessage({ type: "get_ui_settings" }, (res) => {
       uiSettings = res?.settings || {};
+      if (sidebar) applyUISettings();
       if (callback) callback();
     });
   }
 
-  function applyUISettings(el) {
-    el.style.fontSize = uiSettings.fontSize || "22px";
-    el.style.fontFamily = uiSettings.fontFamily || "Arial, sans-serif";
-    el.style.color = uiSettings.color || "#ffffff";
-    el.style.bottom = uiSettings.position === "top" ? "auto" : (uiSettings.bottom || "60px");
-    el.style.top = uiSettings.position === "top" ? (uiSettings.top || "40px") : "auto";
+  function applyUISettings() {
+    if (sidebarBody) sidebarBody.style.fontSize = uiSettings.fontSize || "14px";
+    const onRight = uiSettings.position === "right";
+    if (sidebar) {
+      sidebar.style.left  = onRight ? "auto" : "0";
+      sidebar.style.right = onRight ? "0"    : "auto";
+      sidebar.style.borderRight = onRight ? "none" : "1px solid rgba(255,255,255,0.12)";
+      sidebar.style.borderLeft  = onRight ? "1px solid rgba(255,255,255,0.12)" : "none";
+    }
   }
 
-  function getOrCreateOverlay() {
-    if (overlay) return overlay;
+  // ─── Sidebar ──────────────────────────────────────────────────────────────
+  const SIDEBAR_W = "290px";
+  const COLLAPSED_W = "36px";
 
-    overlay = document.createElement("div");
-    overlay.id = "autotranslation-overlay";
-    applyUISettings(overlay);
-    document.body.appendChild(overlay);
-    return overlay;
+  function buildSidebar() {
+    if (sidebar) return;
+
+    sidebar = document.createElement("div");
+    sidebar.id = "at-sidebar";
+    Object.assign(sidebar.style, {
+      position: "fixed",
+      left: "0",
+      top: "0",
+      bottom: "0",
+      width: SIDEBAR_W,
+      zIndex: "2147483647",
+      display: "flex",
+      flexDirection: "column",
+      background: "rgba(15,15,15,0.82)",
+      backdropFilter: "blur(6px)",
+      color: "#f0f0f0",
+      fontFamily: "Arial, sans-serif",
+      fontSize: uiSettings.fontSize || "14px",
+      borderRight: "1px solid rgba(255,255,255,0.12)",
+      transition: "width 0.15s ease",
+      userSelect: "text",
+      pointerEvents: "auto",
+      overflow: "hidden",
+      boxSizing: "border-box",
+    });
+
+    // Header row
+    const header = document.createElement("div");
+    Object.assign(header.style, {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "7px 10px",
+      borderBottom: "1px solid rgba(255,255,255,0.12)",
+      flexShrink: "0",
+      userSelect: "none",
+      cursor: "default",
+    });
+
+    const title = document.createElement("span");
+    title.id = "at-title";
+    title.textContent = "AutoTranslation";
+    Object.assign(title.style, {
+      fontSize: "11px",
+      fontWeight: "bold",
+      color: "rgba(255,255,255,0.55)",
+      letterSpacing: "0.05em",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+    });
+
+    const collapseBtn = document.createElement("button");
+    collapseBtn.id = "at-collapse";
+    collapseBtn.title = "Collapse panel";
+    collapseBtn.textContent = "◀";
+    Object.assign(collapseBtn.style, {
+      background: "none",
+      border: "none",
+      color: "rgba(255,255,255,0.5)",
+      cursor: "pointer",
+      fontSize: "13px",
+      padding: "0 2px",
+      lineHeight: "1",
+      flexShrink: "0",
+    });
+    collapseBtn.addEventListener("click", toggleCollapse);
+
+    header.appendChild(title);
+    header.appendChild(collapseBtn);
+
+    // Scrollable subtitle body
+    sidebarBody = document.createElement("div");
+    sidebarBody.id = "at-body";
+    Object.assign(sidebarBody.style, {
+      flex: "1",
+      overflowY: "auto",
+      overflowX: "hidden",
+      padding: "2px 0",
+      fontSize: uiSettings.fontSize || "14px",
+    });
+
+    // Track whether the user has scrolled away from the bottom
+    sidebarBody.addEventListener("scroll", () => {
+      const gap = sidebarBody.scrollHeight - sidebarBody.scrollTop - sidebarBody.clientHeight;
+      userScrolledUp = gap > 50;
+    });
+
+    sidebar.appendChild(header);
+    sidebar.appendChild(sidebarBody);
+    document.body.appendChild(sidebar);
+    applyUISettings();
+  }
+
+  function toggleCollapse() {
+    collapsed = !collapsed;
+    const btn = document.getElementById("at-collapse");
+    const ttl = document.getElementById("at-title");
+    if (collapsed) {
+      sidebar.style.width = COLLAPSED_W;
+      if (ttl) ttl.style.display = "none";
+      if (sidebarBody) sidebarBody.style.display = "none";
+      if (btn) btn.textContent = "▶";
+    } else {
+      sidebar.style.width = SIDEBAR_W;
+      if (ttl) ttl.style.display = "";
+      if (sidebarBody) sidebarBody.style.display = "";
+      if (btn) btn.textContent = "◀";
+      // Scroll to bottom on expand
+      if (sidebarBody && !userScrolledUp) {
+        sidebarBody.scrollTop = sidebarBody.scrollHeight;
+      }
+    }
   }
 
   function showSubtitle(original, translation) {
-    subtitleBuffer.push({ original, translation });
-    if (subtitleBuffer.length > MAX_LINES) subtitleBuffer.shift();
+    buildSidebar();
 
-    const el = getOrCreateOverlay();
-    applyUISettings(el);
+    const entry = document.createElement("div");
+    Object.assign(entry.style, {
+      padding: "6px 10px 8px",
+      borderBottom: "1px solid rgba(255,255,255,0.07)",
+      lineHeight: "1.5",
+    });
 
-    el.innerHTML = subtitleBuffer.map((entry, i) => {
-      const pos = i + (MAX_LINES - subtitleBuffer.length);  // align to bottom
-      const opacity = LINE_OPACITY[pos] ?? 1.0;
-      const size    = LINE_SIZE[pos]    ?? "1em";
-      const isLatest = i === subtitleBuffer.length - 1;
-      const inner = (uiSettings.showOriginal && isLatest)
-        ? `<span class="at-original">${escapeHtml(entry.original)}</span>${escapeHtml(entry.translation)}`
-        : escapeHtml(entry.translation);
-      return `<div class="at-line" style="opacity:${opacity};font-size:${size}">${inner}</div>`;
-    }).join("");
+    if (uiSettings.showOriginal && original) {
+      const origEl = document.createElement("div");
+      origEl.textContent = original;
+      Object.assign(origEl.style, {
+        color: "rgba(255,255,255,0.38)",
+        fontSize: "0.82em",
+        fontStyle: "italic",
+        marginBottom: "3px",
+      });
+      entry.appendChild(origEl);
+    }
 
-    el.classList.add("at-visible");
+    const transEl = document.createElement("div");
+    transEl.textContent = translation;
+    entry.appendChild(transEl);
 
-    if (hideTimer) clearTimeout(hideTimer);
-    // Keep overlay visible for longer so rolled-up lines can be read
-    hideTimer = setTimeout(() => {
-      el.classList.remove("at-visible");
-      subtitleBuffer = [];
-    }, 12000);
+    sidebarBody.appendChild(entry);
+
+    if (!userScrolledUp) {
+      sidebarBody.scrollTop = sidebarBody.scrollHeight;
+    }
   }
 
-  function escapeHtml(str) {
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-  }
-
-  // --- Neural TTS (audio pre-generated server-side, arrives as base64 MP3) ---
+  // ─── TTS audio (browser-side fallback) ────────────────────────────────────
   let audioCtx = null;
   let gainNode = null;
   let currentSource = null;
-  let pendingTTSVolume = 100; // applied to gainNode when AudioContext is first created
+  let pendingTTSVolume = 100;
+  let pendingAudioTask = null;
+  let audioUnlocked = false;
 
   function getAudioCtx() {
     if (!audioCtx || audioCtx.state === "closed") {
@@ -88,45 +201,38 @@
     return audioCtx;
   }
 
-  // Unlock AudioContext on the first user gesture (Chrome autoplay policy).
-  let audioUnlocked = false;
-  let pendingAudio = null; // base64 string queued while context is locked
-
   function unlockAudioCtx() {
     if (audioUnlocked) return;
     const ctx = getAudioCtx();
     ctx.resume().then(() => {
       audioUnlocked = true;
       hideUnlockPrompt();
-      if (pendingAudio) {
-        const b64 = pendingAudio;
-        pendingAudio = null;
-        playAudioData(b64);
+      if (pendingAudioTask) {
+        const task = pendingAudioTask;
+        pendingAudioTask = null;
+        task();
       }
     }).catch(() => {});
   }
-  document.addEventListener("click",      unlockAudioCtx, { capture: true, passive: true });
-  document.addEventListener("keydown",    unlockAudioCtx, { capture: true, passive: true });
-  document.addEventListener("pointerdown",unlockAudioCtx, { capture: true, passive: true });
+  document.addEventListener("click",       unlockAudioCtx, { capture: true, passive: true });
+  document.addEventListener("keydown",     unlockAudioCtx, { capture: true, passive: true });
+  document.addEventListener("pointerdown", unlockAudioCtx, { capture: true, passive: true });
 
-  // Visual prompt shown when TTS is available but AudioContext is blocked
   let unlockPrompt = null;
   function showUnlockPrompt() {
     if (unlockPrompt) return;
-    const el = getOrCreateOverlay();
     unlockPrompt = document.createElement("div");
-    unlockPrompt.id = "at-audio-unlock";
     unlockPrompt.textContent = "🔊 Click anywhere to enable voice";
-    unlockPrompt.style.cssText = [
-      "position:fixed", "bottom:110px", "left:50%", "transform:translateX(-50%)",
-      "background:rgba(0,0,0,0.75)", "color:#fff", "padding:6px 16px",
-      "border-radius:20px", "font-size:13px", "font-family:Arial,sans-serif",
-      "cursor:pointer", "z-index:2147483647", "pointer-events:auto",
-      "border:1px solid rgba(255,255,255,0.25)", "backdrop-filter:blur(6px)",
-    ].join(";");
+    Object.assign(unlockPrompt.style, {
+      position: "fixed", bottom: "110px", left: "50%", transform: "translateX(-50%)",
+      background: "rgba(0,0,0,0.78)", color: "#fff", padding: "6px 16px",
+      borderRadius: "20px", fontSize: "13px", fontFamily: "Arial,sans-serif",
+      cursor: "pointer", zIndex: "2147483647", pointerEvents: "auto",
+      border: "1px solid rgba(255,255,255,0.22)", backdropFilter: "blur(6px)",
+    });
     unlockPrompt.addEventListener("click", unlockAudioCtx);
     document.body.appendChild(unlockPrompt);
-    setTimeout(hideUnlockPrompt, 8000); // auto-dismiss after 8s
+    setTimeout(hideUnlockPrompt, 8000);
   }
   function hideUnlockPrompt() {
     if (unlockPrompt) { unlockPrompt.remove(); unlockPrompt = null; }
@@ -139,11 +245,12 @@
     }
   }
 
-  async function playAudioData(base64mp3) {
+  // onStart callback is called right when audio playback begins — used to sync subtitle display.
+  async function playAudioData(base64mp3, onStart) {
     const ctx = getAudioCtx();
 
     if (!audioUnlocked || ctx.state === "suspended") {
-      pendingAudio = base64mp3; // keep only the most recent
+      pendingAudioTask = () => playAudioData(base64mp3, onStart);
       showUnlockPrompt();
       return;
     }
@@ -155,80 +262,67 @@
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.connect(gainNode);
+      onStart?.();         // show subtitle exactly when voice starts
       source.start();
       currentSource = source;
       source.onended = () => { currentSource = null; };
     } catch (e) {
       console.warn("[AutoTranslation] audio playback error:", e);
+      onStart?.();         // still show subtitle if audio fails
     }
   }
 
-  // Stop audio when video pauses
   document.addEventListener("pause", stopCurrentAudio, true);
 
-  // --- Volume control ---
+  // ─── Volume control ────────────────────────────────────────────────────────
   let currentOriginalVolume = 1.0;
   let volumeEnforceInterval = null;
 
   function applyOriginalVolume() {
     document.querySelectorAll("audio, video").forEach((el) => {
-      if (Math.abs(el.volume - currentOriginalVolume) > 0.01) {
-        el.volume = currentOriginalVolume;
-      }
+      if (Math.abs(el.volume - currentOriginalVolume) > 0.01) el.volume = currentOriginalVolume;
     });
   }
 
   function setTTSVolume(pct) {
+    pendingTTSVolume = pct;
     if (gainNode) gainNode.gain.value = pct / 100;
   }
 
   function setOriginalVolume(pct) {
     currentOriginalVolume = pct / 100;
     applyOriginalVolume();
-
-    // Video players (YouTube etc.) re-apply their own volume after a few seconds.
-    // Poll every 300ms to keep our value in effect when it's not 100%.
     clearInterval(volumeEnforceInterval);
-    if (pct < 100) {
-      volumeEnforceInterval = setInterval(applyOriginalVolume, 300);
-    }
+    if (pct < 100) volumeEnforceInterval = setInterval(applyOriginalVolume, 300);
   }
 
-  // Load persisted volumes and respond to live changes from the popup slider
   chrome.storage.local.get(["originalVolume", "ttsVolume"], (res) => {
     setOriginalVolume(res.originalVolume ?? 100);
-    pendingTTSVolume = res.ttsVolume ?? 100;
-    if (gainNode) gainNode.gain.value = pendingTTSVolume / 100;
+    setTTSVolume(res.ttsVolume ?? 100);
   });
 
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
     if (changes.originalVolume) setOriginalVolume(changes.originalVolume.newValue);
-    if (changes.ttsVolume) {
-      pendingTTSVolume = changes.ttsVolume.newValue;
-      if (gainNode) gainNode.gain.value = pendingTTSVolume / 100;
-    }
+    if (changes.ttsVolume)      setTTSVolume(changes.ttsVolume.newValue);
   });
 
+  // ─── Messages ──────────────────────────────────────────────────────────────
   refreshUISettings();
 
   chrome.runtime.onMessage.addListener((msg) => {
     if (msg.type === "subtitle") {
-      console.log("[AutoTranslation] subtitle received:", JSON.stringify({
-        original: msg.original,
-        translation: msg.translation,
-        hasAudio: !!msg.audio,
-        audioBytes: msg.audio ? Math.round(msg.audio.length * 0.75) : 0,
-      }));
-      showSubtitle(msg.original, msg.translation);
       if (msg.audio) {
-        playAudioData(msg.audio);
+        // Browser-side TTS: show subtitle the instant audio starts playing (in sync).
+        playAudioData(msg.audio, () => showSubtitle(msg.original, msg.translation));
+      } else {
+        // No browser audio (TTS off or service-side playback): show immediately.
+        // The service already started playing via Python before sending this message.
+        showSubtitle(msg.original, msg.translation);
       }
     }
     if (msg.type === "update_ui") {
-      refreshUISettings(() => {
-        if (overlay) applyUISettings(overlay);
-      });
+      refreshUISettings();
     }
   });
 })();

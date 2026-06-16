@@ -81,10 +81,10 @@
   </div>
 
   <div class="section">
-    <label>Position</label>
+    <label>Panel side</label>
     <select id="position">
-      <option value="bottom">Bottom</option>
-      <option value="top">Top</option>
+      <option value="left">Left</option>
+      <option value="right">Right</option>
     </select>
   </div>
 
@@ -133,13 +133,13 @@
   <div class="section">
     <label>Original sound: <span id="orig-vol-label">100%</span></label>
     <input id="orig-volume" type="range" min="0" max="100" step="1" value="100" style="width:100%" />
-    <div class="hint">Controls audio/video volume on this page.</div>
+    <div class="hint">Volume of the original audio — both on-page media elements and the service passthrough to the output device.</div>
   </div>
 
   <div class="section">
     <label>Translated voice: <span id="tts-vol-label">100%</span></label>
     <input id="tts-volume" type="range" min="0" max="100" step="1" value="100" style="width:100%" />
-    <div class="hint">Controls Edge TTS volume when playing in browser (no output device set).</div>
+    <div class="hint">Volume of translated TTS — both in-browser playback and service-side output device.</div>
   </div>
 
   <hr />

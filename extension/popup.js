@@ -30,6 +30,16 @@ function applyConfig(c) {
     $("tts-rate").value = c.tts_rate;
     $("tts-rate-label").textContent = parseFloat(c.tts_rate).toFixed(1) + "x";
   }
+  if (c.original_volume !== undefined) {
+    const pct = Math.round(c.original_volume * 100);
+    $("orig-volume").value = pct;
+    $("orig-vol-label").textContent = pct + "%";
+  }
+  if (c.tts_volume !== undefined) {
+    const pct = Math.round(c.tts_volume * 100);
+    $("tts-volume").value = pct;
+    $("tts-vol-label").textContent = pct + "%";
+  }
   populateDeviceSelect("capture-device", c.loopback_devices, c.capture_device);
   populateDeviceSelect("playback-device", c.output_devices, c.tts_playback_device);
   toggleEngineSections();
@@ -55,7 +65,9 @@ chrome.runtime.sendMessage({ type: "get_config" }, (res) => {
 chrome.runtime.sendMessage({ type: "get_ui_settings" }, (res) => {
   const uiPrefs = res?.settings || {};
   if (uiPrefs.fontSize) $("font-size").value = uiPrefs.fontSize.replace("px", "");
-  if (uiPrefs.position) $("position").value = uiPrefs.position;
+  // Migrate old bottom/top values to left/right
+  const pos = uiPrefs.position;
+  if (pos) $("position").value = (pos === "top") ? "right" : (pos === "bottom") ? "left" : pos;
   if (uiPrefs.showOriginal) $("show-original").checked = true;
 });
 
@@ -67,26 +79,34 @@ $("chunk-duration").addEventListener("input", () => {
   $("chunk-label").textContent = parseFloat($("chunk-duration").value).toFixed(1) + "s";
 });
 
-// --- Volume sliders (live, stored locally — no server round-trip needed) ---
+// --- Volume sliders ---
+// Initial values come from server config (applyConfig above) but fall back to local storage.
 chrome.storage.local.get(["originalVolume", "ttsVolume"], (res) => {
-  const ov = res.originalVolume ?? 100;
-  const tv = res.ttsVolume ?? 100;
-  $("orig-volume").value = ov;
-  $("orig-vol-label").textContent = ov + "%";
-  $("tts-volume").value = tv;
-  $("tts-vol-label").textContent = tv + "%";
+  // Only apply local storage values if the server hasn't already populated the sliders.
+  if ($("orig-volume").value === "100" && res.originalVolume !== undefined) {
+    $("orig-volume").value = res.originalVolume;
+    $("orig-vol-label").textContent = res.originalVolume + "%";
+  }
+  if ($("tts-volume").value === "100" && res.ttsVolume !== undefined) {
+    $("tts-volume").value = res.ttsVolume;
+    $("tts-vol-label").textContent = res.ttsVolume + "%";
+  }
 });
 
 $("orig-volume").addEventListener("input", () => {
   const val = parseInt($("orig-volume").value);
   $("orig-vol-label").textContent = val + "%";
   chrome.storage.local.set({ originalVolume: val });
+  // Live update: service uses this for passthrough volume.
+  chrome.runtime.sendMessage({ type: "update_config", config: { original_volume: val / 100 } });
 });
 
 $("tts-volume").addEventListener("input", () => {
   const val = parseInt($("tts-volume").value);
   $("tts-vol-label").textContent = val + "%";
   chrome.storage.local.set({ ttsVolume: val });
+  // Live update: service uses this for output-device TTS volume.
+  chrome.runtime.sendMessage({ type: "update_config", config: { tts_volume: val / 100 } });
 });
 
 // Live updates from the service (config push, connection status)
@@ -127,6 +147,8 @@ $("save-btn").addEventListener("click", () => {
     tts_rate: parseFloat($("tts-rate").value),
     capture_device: $("capture-device").value,
     tts_playback_device: $("playback-device").value,
+    original_volume: parseInt($("orig-volume").value) / 100,
+    tts_volume: parseInt($("tts-volume").value) / 100,
   };
 
   const uiPrefs = {
