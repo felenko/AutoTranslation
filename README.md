@@ -118,6 +118,33 @@ The fix: set **Play voice to** in the extension popup to your speakers or headph
 > **Note:** After changing **Capture from**, restart the service (`run.py`) for it to take effect.  
 > **Capture from** and **Play voice to** dropdowns are populated automatically from devices detected by the service.
 
+## Chunk boundary handling
+
+Audio is processed in fixed-size chunks (default 4 seconds). A naive implementation cuts audio at hard time boundaries, which means words that happen to span two chunks get split mid-syllable — Whisper then transcribes garbled partial words at the end of one chunk and the start of the next.
+
+AutoTranslation solves this with three layers working together:
+
+### 1. Audio overlap
+The last 0.8 seconds of each chunk is prepended to the beginning of the next chunk. This "tail buffer" ensures that any word spanning the boundary always appears complete in at least one chunk's audio.
+
+```
+Chunk N:  [-------- 4.0 s --------][tail]
+Chunk N+1:              [tail][-------- 4.0 s --------][tail]
+                         ↑
+                    boundary word is now whole
+```
+
+The tail size is configurable (`audio.overlap_seconds` in `config.json`, default `0.8`).
+
+### 2. Context prompting
+The last ~100 characters of the previous chunk's transcript are passed to Whisper as a `prompt` (Whisper API) or `initial_prompt` (local faster-whisper). This conditions the language model decoder to continue naturally from where the previous chunk ended, improving accuracy for context-dependent words and names.
+
+### 3. Transcript deduplication
+Because the overlap audio is transcribed twice (once in chunk N, once at the start of chunk N+1), the pipeline strips the repeated words before broadcasting. The deduplication uses exact word matching first, with a fuzzy `SequenceMatcher` fallback for cases where Whisper slightly rephrases the same audio on the second pass.
+
+### Mute window protection
+When TTS voice synthesis is active, incoming audio is muted for the duration of playback to prevent echo. Whenever a chunk is dropped during the mute window, the overlap tail buffer and transcript context are both cleared — ensuring that TTS audio cannot contaminate the context for the first real speech chunk that follows.
+
 ## Project structure
 
 ```
