@@ -3,17 +3,32 @@ import numpy as np
 from .base import STTEngine
 
 
+def _best_device() -> tuple[str, str]:
+    """Return (device, compute_type) using CUDA float16 if available, else CPU int8."""
+    try:
+        import ctranslate2
+        if ctranslate2.get_cuda_device_count() > 0:
+            return "cuda", "float16"
+    except Exception:
+        pass
+    return "cpu", "int8"
+
+
 class LocalWhisperEngine(STTEngine):
     def __init__(self, model_size: str = "base"):
         # Import lazily so the service starts even if faster-whisper isn't installed
         from faster_whisper import WhisperModel
 
+        device, compute_type = _best_device()
         print(
-            f"[WhisperLocal] loading model '{model_size}' "
-            "(first run downloads ~150 MB from Hugging Face, then caches locally)..."
+            f"[WhisperLocal] loading model '{model_size}' on {device} ({compute_type}) "
+            "(first run downloads from Hugging Face, then caches locally)..."
         )
-        self._model = WhisperModel(model_size, device="cpu", compute_type="int8", num_workers=2)
-        print(f"[WhisperLocal] model '{model_size}' ready")
+        # GPU doesn't benefit from multiple CPU workers
+        self._model = WhisperModel(model_size, device=device, compute_type=compute_type,
+                                   num_workers=1 if device == "cuda" else 2)
+        self._device = device
+        print(f"[WhisperLocal] model '{model_size}' ready on {device}")
 
     async def transcribe(
         self, audio_bytes: bytes, sample_rate: int, language: str | None = None,
@@ -29,7 +44,7 @@ class LocalWhisperEngine(STTEngine):
             audio,
             language=language,
             initial_prompt=prompt or "",
-            beam_size=1,               # greedy: ~3-4x faster on CPU, essential for real-time
+            beam_size=5 if self._device == "cuda" else 1,  # GPU can afford beam search; CPU uses greedy
             vad_filter=True,
             condition_on_previous_text=False,
             no_speech_threshold=0.8,
