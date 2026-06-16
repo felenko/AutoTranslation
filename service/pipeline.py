@@ -298,33 +298,52 @@ class Pipeline:
 
         tts_audio: Optional[bytes] = None
         if self._cfg.tts.enabled and translation:
-            try:
-                from .engines.tts.edge import synthesize, play_locally
-                raw_audio = await synthesize(
+            play_secs = len(translation) / max(12.5 * self._cfg.tts.rate, 1.0)
+            chunk_s = self._cfg.audio.chunk_duration_seconds
+            self._tts_mute_until = time.monotonic() + min(play_secs + chunk_s + 2.0, 30.0)
+            self._recent_tts.append((translation, time.monotonic()))
+
+            if self._cfg.tts.playback_device:
+                # Local device: fire synthesis in background so pipeline isn't blocked
+                asyncio.create_task(self._tts_local(
                     translation,
                     self._cfg.translation.target_language,
                     self._cfg.tts.voice_gender,
                     self._cfg.tts.rate,
-                )
-                if raw_audio:
-                    play_secs = len(translation) / max(12.5 * self._cfg.tts.rate, 1.0)
-                    chunk_s = self._cfg.audio.chunk_duration_seconds
-                    self._tts_mute_until = time.monotonic() + min(play_secs + chunk_s + 2.0, 30.0)
-                    self._recent_tts.append((translation, time.monotonic()))
-                    if self._cfg.tts.playback_device is not None and self._cfg.tts.playback_device != "":
-                        # Play through local output device — no audio sent to browser (no echo)
-                        loop = asyncio.get_event_loop()
-                        loop.run_in_executor(
-                            None, play_locally,
-                            raw_audio, self._cfg.tts.playback_device, self._cfg.tts.tts_volume,
-                        )
-                    else:
-                        tts_audio = raw_audio  # send to browser for playback
-                else:
-                    print("[TTS] WARNING: edge-tts returned empty audio")
-            except ImportError as e:
-                print(f"[TTS] ERROR: {e}")
-            except Exception as exc:
-                print(f"[TTS] ERROR: {exc}")
+                    self._cfg.tts.playback_device,
+                    self._cfg.tts.tts_volume,
+                ))
+            else:
+                # Browser path: audio must accompany the subtitle message
+                try:
+                    from .engines.tts.edge import synthesize
+                    tts_audio = await synthesize(
+                        translation,
+                        self._cfg.translation.target_language,
+                        self._cfg.tts.voice_gender,
+                        self._cfg.tts.rate,
+                    )
+                    if not tts_audio:
+                        print("[TTS] WARNING: edge-tts returned empty audio")
+                        self._tts_mute_until = 0.0
+                except Exception as exc:
+                    print(f"[TTS] ERROR: {exc}")
+                    self._tts_mute_until = 0.0
 
         await self._on_subtitle(transcript, translation, tts_audio)
+
+    async def _tts_local(self, text: str, target_lang: str, voice_gender: str,
+                         rate: float, device: str, volume: float) -> None:
+        try:
+            from .engines.tts.edge import synthesize, play_locally
+            raw_audio = await synthesize(text, target_lang, voice_gender, rate)
+            if raw_audio:
+                await asyncio.get_event_loop().run_in_executor(
+                    None, play_locally, raw_audio, device, volume
+                )
+            else:
+                print("[TTS] WARNING: edge-tts returned empty audio")
+                self._tts_mute_until = 0.0
+        except Exception as exc:
+            print(f"[TTS] ERROR: {exc}")
+            self._tts_mute_until = 0.0
