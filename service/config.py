@@ -18,6 +18,7 @@ class AudioConfig:
     sample_rate: int = 16000
     capture_device: str = ""  # partial name match, e.g. "CABLE" for VB-Audio Virtual Cable
     original_volume: float = 1.0  # passthrough volume (0.0–1.0)
+    overlap_seconds: float = 0.8  # audio prepended from previous chunk to fix boundary words
 
 
 @dataclass
@@ -114,6 +115,7 @@ def load_config(path: str = CONFIG_PATH) -> Config:
         sample_rate=a.get("sample_rate", cfg.audio.sample_rate),
         capture_device=a.get("capture_device", cfg.audio.capture_device),
         original_volume=float(a.get("original_volume", cfg.audio.original_volume)),
+        overlap_seconds=float(a.get("overlap_seconds", cfg.audio.overlap_seconds)),
     )
     stt = raw.get("stt", {})
     wa = stt.get("whisper_api", {})
@@ -163,6 +165,7 @@ def save_config(cfg: Config, path: str = CONFIG_PATH) -> None:
             "sample_rate": cfg.audio.sample_rate,
             "capture_device": cfg.audio.capture_device,
             "original_volume": cfg.audio.original_volume,
+            "overlap_seconds": cfg.audio.overlap_seconds,
         },
         "stt": {
             "engine": cfg.stt.engine,

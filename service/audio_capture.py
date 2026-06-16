@@ -21,6 +21,7 @@ class AudioCapture:
         capture_device: str = "",
         playback_device: str = "",
         original_volume: float = 1.0,
+        overlap_seconds: float = 0.8,
     ):
         self._chunk_duration = chunk_duration
         self._sample_rate = sample_rate
@@ -29,6 +30,10 @@ class AudioCapture:
         # Both attributes are read every 0.1 s so live updates take effect quickly.
         self._playback_device = playback_device
         self._original_volume = original_volume
+        self._overlap_seconds = overlap_seconds
+        # Tail of the last emitted chunk, prepended to the next chunk so boundary
+        # words always appear complete in at least one chunk's audio.
+        self._tail_buf: bytes = b""
 
     async def stream(self) -> AsyncIterator[tuple[bytes, float]]:
         """Yields (pcm_chunk, captured_at) pairs. captured_at is monotonic time when the
@@ -93,8 +98,12 @@ class AudioCapture:
                         if len(buffer) >= target:
                             chunk = buffer[:target]
                             buffer = buffer[target:]
+                            # Prepend tail of previous chunk so boundary words are complete.
+                            overlap_bytes = int(self._sample_rate * self._overlap_seconds) * 2
+                            full_chunk = self._tail_buf + chunk
+                            self._tail_buf = chunk[-overlap_bytes:] if overlap_bytes > 0 else b""
                             asyncio.run_coroutine_threadsafe(
-                                queue.put((chunk, time.monotonic())), loop
+                                queue.put((full_chunk, time.monotonic())), loop
                             )
                 finally:
                     in_stream.stop_stream()

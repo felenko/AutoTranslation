@@ -10,7 +10,8 @@ class WhisperAPIEngine(STTEngine):
         self._model = model
 
     async def transcribe(
-        self, audio_bytes: bytes, sample_rate: int, language: str | None = None
+        self, audio_bytes: bytes, sample_rate: int, language: str | None = None,
+        prompt: str | None = None,
     ) -> tuple[str, str]:
         wav_buffer = _pcm_to_wav(audio_bytes, sample_rate)
         try:
@@ -19,6 +20,7 @@ class WhisperAPIEngine(STTEngine):
                 file=("audio.wav", wav_buffer, "audio/wav"),
                 response_format="verbose_json",
                 **( {"language": language} if language else {} ),
+                **( {"prompt": prompt} if prompt else {} ),
             )
             return result.text.strip(), result.language or language or "en"
         except Exception as exc:

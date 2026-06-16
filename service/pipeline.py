@@ -31,6 +31,30 @@ _LANG_TO_CODE: dict[str, str] = {
     "vietnamese": "vi", "welsh": "cy",
 }
 
+def _strip_overlap(prev: str, curr: str, max_words: int = 10) -> str:
+    """Remove leading words from curr that duplicate the tail of prev (overlap region).
+
+    Uses exact word matching first, then a fuzzy SequenceMatcher fallback for cases
+    where Whisper slightly rephrases the overlap audio.
+    """
+    if not prev or not curr:
+        return curr
+    pw = prev.split()
+    cw = curr.split()
+    if not cw:
+        return curr
+    # Exact match: find longest suffix of prev that equals a prefix of curr.
+    for n in range(min(len(pw), len(cw), max_words), 0, -1):
+        if pw[-n:] == cw[:n]:
+            return " ".join(cw[n:]).strip()
+    # Fuzzy fallback: require at least 2 consecutive matching words at the boundary.
+    sm = difflib.SequenceMatcher(None, pw[-max_words:], cw[:max_words])
+    for block in sm.get_matching_blocks():
+        if block.b == 0 and block.size >= 2:
+            return " ".join(cw[block.size:]).strip()
+    return curr
+
+
 def _to_whisper_lang(lang: str) -> str | None:
     if not lang:
         return None
@@ -104,9 +128,11 @@ class Pipeline:
             capture_device=cfg.audio.capture_device,
             playback_device=cfg.tts.playback_device,
             original_volume=cfg.audio.original_volume,
+            overlap_seconds=cfg.audio.overlap_seconds,
         )
         self._tts_mute_until = 0.0
         self._recent_tts: list[tuple[str, float]] = []  # (text, monotonic timestamp)
+        self._prev_transcript: str = ""  # last reported transcript, used for overlap dedup + prompt
 
     def update_config(self, cfg: Config) -> None:
         """Apply settings changes without reloading heavy engines unnecessarily."""
@@ -115,9 +141,15 @@ class Pipeline:
 
         if cfg.audio.chunk_duration_seconds != old.audio.chunk_duration_seconds:
             self._capture._chunk_duration = cfg.audio.chunk_duration_seconds
+            self._prev_transcript = ""
+            self._capture._tail_buf = b""
             print(f"[Pipeline] chunk duration -> {cfg.audio.chunk_duration_seconds}s")
         if cfg.audio.original_volume != old.audio.original_volume:
             self._capture._original_volume = cfg.audio.original_volume
+        if cfg.audio.overlap_seconds != old.audio.overlap_seconds:
+            self._capture._overlap_seconds = cfg.audio.overlap_seconds
+            self._capture._tail_buf = b""
+            print(f"[Pipeline] overlap -> {cfg.audio.overlap_seconds}s")
 
         stt_changed = (
             cfg.stt.engine != old.stt.engine
@@ -221,16 +253,29 @@ class Pipeline:
         # they are dequeued after the mute has expired.
         if captured_at < self._tts_mute_until:
             print(f"[mute] dropping chunk captured at {captured_at:.1f} (mute until {self._tts_mute_until:.1f})")
+            # Flush overlap state: the next chunk's tail won't align with anything we'll report.
+            self._prev_transcript = ""
+            self._capture._tail_buf = b""
             return
 
         whisper_lang = _to_whisper_lang(self._cfg.translation.source_language)
-        transcript, detected_lang = await self._stt.transcribe(audio, self._cfg.audio.sample_rate, language=whisper_lang)
-        if not transcript:
+        # Pass last ~100 chars of previous transcript so Whisper can continue naturally.
+        prompt = self._prev_transcript[-100:] if self._prev_transcript else None
+        transcript_full, detected_lang = await self._stt.transcribe(
+            audio, self._cfg.audio.sample_rate, language=whisper_lang, prompt=prompt
+        )
+        if not transcript_full:
             if not self._warned_silence:
                 self._warned_silence = True
                 print("[STT] no speech detected — make sure audio is playing through the loopback device")
             return
 
+        # Remove words already reported from the overlap region at the start of this chunk.
+        transcript = _strip_overlap(self._prev_transcript, transcript_full)
+        if not transcript:
+            return  # entire result was overlap repetition — nothing new to report
+
+        self._prev_transcript = transcript
         print(f"[original] [{detected_lang}] {transcript}")
 
         if self._is_tts_echo(transcript, detected_lang, captured_at):

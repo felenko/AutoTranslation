@@ -16,16 +16,19 @@ class LocalWhisperEngine(STTEngine):
         print(f"[WhisperLocal] model '{model_size}' ready")
 
     async def transcribe(
-        self, audio_bytes: bytes, sample_rate: int, language: str | None = None
+        self, audio_bytes: bytes, sample_rate: int, language: str | None = None,
+        prompt: str | None = None,
     ) -> tuple[str, str]:
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._run, audio_bytes, sample_rate, language)
+        return await loop.run_in_executor(None, self._run, audio_bytes, sample_rate, language, prompt)
 
-    def _run(self, audio_bytes: bytes, sample_rate: int, language: str | None = None) -> tuple[str, str]:
+    def _run(self, audio_bytes: bytes, sample_rate: int, language: str | None = None,
+             prompt: str | None = None) -> tuple[str, str]:
         audio = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
         segments, info = self._model.transcribe(
             audio,
             language=language,
+            initial_prompt=prompt or "",
             beam_size=1,               # greedy: ~3-4x faster on CPU, essential for real-time
             vad_filter=True,
             condition_on_previous_text=False,

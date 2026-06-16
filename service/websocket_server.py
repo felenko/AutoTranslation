@@ -119,6 +119,7 @@ def _config_to_dict(cfg: Config) -> dict:
         "claude_model": cfg.translation.claude.model,
         "cursor_model": cfg.translation.cursor.model,
         "chunk_duration": cfg.audio.chunk_duration_seconds,
+        "overlap_seconds": cfg.audio.overlap_seconds,
         "capture_device": cfg.audio.capture_device,
         "original_volume": cfg.audio.original_volume,
         "tts_enabled": cfg.tts.enabled,
@@ -156,6 +157,8 @@ def _apply_patch(cfg: Config, patch: dict) -> None:
         cfg.translation.cursor.model = patch["cursor_model"]
     if "chunk_duration" in patch:
         cfg.audio.chunk_duration_seconds = float(patch["chunk_duration"])
+    if "overlap_seconds" in patch:
+        cfg.audio.overlap_seconds = float(patch["overlap_seconds"])
     if "capture_device" in patch:
         cfg.audio.capture_device = patch["capture_device"]
     if "original_volume" in patch:
