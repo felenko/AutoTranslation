@@ -45,12 +45,13 @@ class SubtitleServer:
         )
 
     async def _handler(self, ws: WebSocketServerProtocol) -> None:
-        # Each extension background-script restart opens a new connection without
-        # closing the old one (service worker died). Evict stale connections first
-        # so broadcasts always go to exactly one client.
+        # Evict only connections that are already closed (dead service workers).
+        # Closing a live connection triggers onclose → reconnect on the other end,
+        # which then boots this new connection, creating an infinite fight loop.
         if self._clients:
-            stale = list(self._clients)
-            self._clients.clear()
+            stale = [c for c in self._clients if c.closed]
+            live = [c for c in self._clients if not c.closed]
+            self._clients = set(live)
             await asyncio.gather(
                 *[old.close(1001, "replaced by new connection") for old in stale],
                 return_exceptions=True,
@@ -105,6 +106,7 @@ async def _safe_send(ws: WebSocketServerProtocol, msg: str) -> None:
 
 
 def _config_to_dict(cfg: Config) -> dict:
+    from .audio_capture import list_loopback_device_names, list_output_device_names
     return {
         "stt_engine": cfg.stt.engine,
         "translation_engine": cfg.translation.engine,
@@ -116,9 +118,13 @@ def _config_to_dict(cfg: Config) -> dict:
         "claude_model": cfg.translation.claude.model,
         "cursor_model": cfg.translation.cursor.model,
         "chunk_duration": cfg.audio.chunk_duration_seconds,
+        "capture_device": cfg.audio.capture_device,
         "tts_enabled": cfg.tts.enabled,
         "tts_voice_gender": cfg.tts.voice_gender,
         "tts_rate": cfg.tts.rate,
+        "tts_playback_device": cfg.tts.playback_device,
+        "loopback_devices": list_loopback_device_names(),
+        "output_devices": list_output_device_names(),
     }
 
 
@@ -145,9 +151,13 @@ def _apply_patch(cfg: Config, patch: dict) -> None:
         cfg.translation.cursor.model = patch["cursor_model"]
     if "chunk_duration" in patch:
         cfg.audio.chunk_duration_seconds = float(patch["chunk_duration"])
+    if "capture_device" in patch:
+        cfg.audio.capture_device = patch["capture_device"]
     if "tts_enabled" in patch:
         cfg.tts.enabled = bool(patch["tts_enabled"])
     if "tts_voice_gender" in patch:
         cfg.tts.voice_gender = patch["tts_voice_gender"]
     if "tts_rate" in patch:
         cfg.tts.rate = float(patch["tts_rate"])
+    if "tts_playback_device" in patch:
+        cfg.tts.playback_device = patch["tts_playback_device"]

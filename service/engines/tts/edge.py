@@ -2,6 +2,7 @@
 Microsoft Edge neural TTS via the edge-tts package (no API key required).
 Auto-selects a voice for the target language + gender.
 """
+import asyncio
 import edge_tts
 
 # Maps language name or ISO code → (female_voice, male_voice)
@@ -90,3 +91,52 @@ async def synthesize(text: str, target_language: str, gender: str = "female", ra
         if chunk["type"] == "audio":
             audio_data += chunk["data"]
     return audio_data
+
+
+def play_locally(audio_bytes: bytes, device_name: str = "") -> None:
+    """Decode MP3 and play through a local output device (blocking — run in executor)."""
+    try:
+        import miniaudio
+        import pyaudiowpatch as pyaudio
+
+        decoded = miniaudio.decode(
+            audio_bytes,
+            output_format=miniaudio.SampleFormat.SIGNED16,
+            nchannels=1,
+            sample_rate=22050,
+        )
+
+        pa = pyaudio.PyAudio()
+        try:
+            device_index = None
+            if device_name:
+                needle = device_name.lower()
+                for i in range(pa.get_device_count()):
+                    info = pa.get_device_info_by_index(i)
+                    if (info.get("maxOutputChannels", 0) > 0
+                            and not info.get("isLoopbackDevice")
+                            and needle in info["name"].lower()):
+                        device_index = i
+                        break
+                if device_index is None:
+                    print(f"[TTS] output device not found: {device_name!r}, using default")
+
+            stream = pa.open(
+                format=pyaudio.paInt16,
+                channels=decoded.nchannels,
+                rate=decoded.sample_rate,
+                output=True,
+                output_device_index=device_index,
+            )
+            try:
+                pcm = bytes(decoded.samples)
+                chunk_size = 4096
+                for offset in range(0, len(pcm), chunk_size):
+                    stream.write(pcm[offset:offset + chunk_size])
+            finally:
+                stream.stop_stream()
+                stream.close()
+        finally:
+            pa.terminate()
+    except Exception as exc:
+        print(f"[TTS] local playback error: {exc}")

@@ -1,5 +1,19 @@
 const $ = (id) => document.getElementById(id);
 
+function populateDeviceSelect(id, devices, selected) {
+  const el = $(id);
+  const defaultOpt = el.options[0];
+  el.innerHTML = "";
+  el.appendChild(defaultOpt);
+  for (const name of (devices || [])) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    el.appendChild(opt);
+  }
+  if (selected) el.value = selected;
+}
+
 function applyConfig(c) {
   if (!c) return;
   if (c.stt_engine) $("stt-engine").value = c.stt_engine;
@@ -10,13 +24,14 @@ function applyConfig(c) {
   if (c.ollama_model) $("ollama-model").value = c.ollama_model;
   if (c.cursor_model && $("cursor-model")) $("cursor-model").value = c.cursor_model;
   if (c.claude_model) $("claude-model").value = c.claude_model;
-  // TTS is server-side now — load from server config
   if (c.tts_enabled !== undefined) $("tts-enabled").checked = !!c.tts_enabled;
   if (c.tts_voice_gender) $("tts-voice").value = c.tts_voice_gender;
   if (c.tts_rate !== undefined) {
     $("tts-rate").value = c.tts_rate;
     $("tts-rate-label").textContent = parseFloat(c.tts_rate).toFixed(1) + "x";
   }
+  populateDeviceSelect("capture-device", c.loopback_devices, c.capture_device);
+  populateDeviceSelect("playback-device", c.output_devices, c.tts_playback_device);
   toggleEngineSections();
 }
 
@@ -110,6 +125,8 @@ $("save-btn").addEventListener("click", () => {
     tts_enabled: $("tts-enabled").checked,
     tts_voice_gender: $("tts-voice").value,
     tts_rate: parseFloat($("tts-rate").value),
+    capture_device: $("capture-device").value,
+    tts_playback_device: $("playback-device").value,
   };
 
   const uiPrefs = {

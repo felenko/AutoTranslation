@@ -13,20 +13,22 @@ _READ_SECONDS = 0.1  # internal read size — chunk_duration is accumulated from
 
 
 class AudioCapture:
-    def __init__(self, chunk_duration: float = 4.0, sample_rate: int = 16000):
+    def __init__(self, chunk_duration: float = 4.0, sample_rate: int = 16000, capture_device: str = ""):
         self._chunk_duration = chunk_duration
         self._sample_rate = sample_rate
+        self._capture_device = capture_device
 
     async def stream(self) -> AsyncIterator[bytes]:
         """Yields mono 16-bit PCM chunks. Chunk size follows _chunk_duration dynamically."""
         loop = asyncio.get_event_loop()
-        # maxsize=2: if pipeline falls behind, old chunks are dropped so we stay current.
-        queue: asyncio.Queue[bytes] = asyncio.Queue(maxsize=2)
+        # Unbounded — every chunk is kept. Pipeline processes in order and catches up
+        # during speaker pauses; lag is acceptable, missing audio is not.
+        queue: asyncio.Queue[bytes] = asyncio.Queue()
 
         def _run():
             pa = pyaudio.PyAudio()
             try:
-                device = _find_loopback_device(pa)
+                device = _find_loopback_device(pa, self._capture_device)
                 native_rate = int(device["defaultSampleRate"])
                 channels = min(int(device["maxInputChannels"]), 2)
                 read_frames = int(native_rate * _READ_SECONDS)
@@ -53,14 +55,7 @@ class AudioCapture:
                         if len(buffer) >= target:
                             chunk = buffer[:target]
                             buffer = buffer[target:]
-                            # Schedule a non-blocking put; silently drop if queue is full
-                            # (pipeline is behind — better to skip than to process stale audio).
-                            def _put(q=queue, c=chunk):
-                                try:
-                                    q.put_nowait(c)
-                                except asyncio.QueueFull:
-                                    pass
-                            loop.call_soon_threadsafe(_put)
+                            asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
                 finally:
                     stream.stop_stream()
                     stream.close()
@@ -72,18 +67,77 @@ class AudioCapture:
             yield await queue.get()
 
 
-def _find_loopback_device(pa: pyaudio.PyAudio) -> dict:
-    default_speakers = pa.get_default_wasapi_loopback()
-    if default_speakers:
-        return default_speakers
+def list_loopback_devices() -> None:
+    """Print all available WASAPI loopback devices. Run to discover the right capture_device name."""
+    pa = pyaudio.PyAudio()
+    try:
+        found = False
+        for i in range(pa.get_device_count()):
+            info = pa.get_device_info_by_index(i)
+            if info.get("isLoopbackDevice"):
+                print(f"  [{i}] {info['name']}")
+                found = True
+        if not found:
+            print("  (none found — install pyaudiowpatch and ensure audio devices are active)")
+    finally:
+        pa.terminate()
+
+
+def list_loopback_device_names() -> list[str]:
+    pa = pyaudio.PyAudio()
+    try:
+        return [
+            pa.get_device_info_by_index(i)["name"]
+            for i in range(pa.get_device_count())
+            if pa.get_device_info_by_index(i).get("isLoopbackDevice")
+        ]
+    finally:
+        pa.terminate()
+
+
+def list_output_device_names() -> list[str]:
+    pa = pyaudio.PyAudio()
+    try:
+        seen: set[str] = set()
+        names: list[str] = []
+        for i in range(pa.get_device_count()):
+            info = pa.get_device_info_by_index(i)
+            if (info.get("maxOutputChannels", 0) > 0
+                    and not info.get("isLoopbackDevice")
+                    and info["name"] not in seen):
+                seen.add(info["name"])
+                names.append(info["name"])
+        return names
+    finally:
+        pa.terminate()
+
+
+def _find_loopback_device(pa: pyaudio.PyAudio, name_filter: str = "") -> dict:
+    loopbacks = []
     for i in range(pa.get_device_count()):
         info = pa.get_device_info_by_index(i)
         if info.get("isLoopbackDevice"):
-            return info
-    raise RuntimeError(
-        "No WASAPI loopback device found. "
-        "Make sure audio is playing and pyaudiowpatch is installed."
-    )
+            loopbacks.append(info)
+
+    if not loopbacks:
+        raise RuntimeError(
+            "No WASAPI loopback device found. "
+            "Make sure audio is playing and pyaudiowpatch is installed."
+        )
+
+    if name_filter:
+        needle = name_filter.lower()
+        matches = [d for d in loopbacks if needle in d["name"].lower()]
+        if matches:
+            return matches[0]
+        names = [d["name"] for d in loopbacks]
+        raise RuntimeError(
+            f"No loopback device matching '{name_filter}'. Available: {names}"
+        )
+
+    # Default: prefer the system default output's loopback
+    default = pa.get_default_wasapi_loopback()
+    return default if default else loopbacks[0]
 
 
 def _to_mono_16k(raw: bytes, channels: int, src_rate: int, dst_rate: int) -> bytes:

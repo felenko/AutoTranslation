@@ -139,7 +139,27 @@
   <div class="section">
     <label>Translated voice: <span id="tts-vol-label">100%</span></label>
     <input id="tts-volume" type="range" min="0" max="100" step="1" value="100" style="width:100%" />
-    <div class="hint">Controls Edge TTS playback volume.</div>
+    <div class="hint">Controls Edge TTS volume when playing in browser (no output device set).</div>
+  </div>
+
+  <hr />
+
+  <div class="section subtitle-label">Audio routing</div>
+
+  <div class="section">
+    <label>Capture from</label>
+    <select id="capture-device">
+      <option value="">System default loopback</option>
+    </select>
+    <div class="hint">Loopback device to capture — set to VB-Cable output when using VB-Audio. Requires service restart to apply.</div>
+  </div>
+
+  <div class="section">
+    <label>Play voice to</label>
+    <select id="playback-device">
+      <option value="">In browser (Chrome)</option>
+    </select>
+    <div class="hint">Output device for translated voice. Set to speakers/headphones so TTS is not re-captured.</div>
   </div>
 
   <div class="section">

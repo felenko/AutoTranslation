@@ -14,6 +14,8 @@ System audio (WASAPI loopback)
    Translation engine
         ↓
    WebSocket → Chrome extension overlay
+        ↓ (optional)
+   Edge TTS → local output device (speakers/headphones)
 ```
 
 ## Requirements
@@ -54,6 +56,8 @@ You should see:
 
 **Important:** Audio must play through your **default Windows output device** — the service captures loopback from that device, not the microphone.
 
+> **Using VB-Audio Virtual Cable?** See [Audio routing with VB-Cable](#audio-routing-with-vb-audio-virtual-cable) below.
+
 ### 3. Load the browser extension
 
 1. Open `chrome://extensions`
@@ -87,6 +91,33 @@ Edit `config.json` (copy from `config.json.example`) or use the extension popup.
 
 Set `target_language` to any language name (e.g. `Russian`, `Spanish`, `Japanese`).
 
+### Voice synthesis (TTS)
+
+Enable **Voice synthesis** in the popup to hear translated speech read aloud. Neural voices are auto-selected for your target language via Microsoft Edge TTS (no API key required).
+
+**Audio routing for TTS** — if you use VB-Audio Cable, Chrome's audio output is routed through VB-Cable, which means TTS audio played inside the browser is _also_ captured by the loopback, creating an infinite echo loop:
+
+```
+TTS plays in Chrome → Chrome output → VB-Cable → loopback capture → STT → translate → TTS → ...
+```
+
+The fix: set **Play voice to** in the extension popup to your speakers or headphones. The service then plays TTS directly via Python (bypassing VB-Cable entirely), so the loopback only captures the original source audio.
+
+## Audio routing with VB-Audio Virtual Cable
+
+[VB-Audio Virtual Cable](https://vb-audio.com/Cable/) lets you capture audio from a specific app (e.g. Chrome) rather than all system audio.
+
+**Setup:**
+1. Install VB-Cable and reboot if prompted
+2. In Chrome settings (or Windows Volume Mixer), set Chrome's output device to **CABLE Input (VB-Audio Virtual Cable)**
+3. In the extension popup → **Audio routing**:
+   - **Capture from** → `CABLE Output (VB-Audio Virtual Cable)` — selects the VB-Cable loopback as the capture source (requires service restart)
+   - **Play voice to** → your speakers or headphones — TTS plays through Python directly, not through Chrome, avoiding echo
+4. Your regular system audio (other apps) continues to play normally on your default device
+
+> **Note:** After changing **Capture from**, restart the service (`run.py`) for it to take effect.  
+> **Capture from** and **Play voice to** dropdowns are populated automatically from devices detected by the service.
+
 ## Project structure
 
 ```
@@ -96,17 +127,18 @@ AutoTranslation/
 ├── requirements.txt
 ├── service/
 │   ├── main.py            # Async service orchestration
-│   ├── pipeline.py        # STT → translation pipeline
+│   ├── pipeline.py        # STT → translation → TTS pipeline
 │   ├── audio_capture.py   # Windows WASAPI loopback
 │   ├── websocket_server.py
 │   └── engines/
 │       ├── stt/           # Whisper API & local
-│       └── translation/   # MyMemory, Claude, OpenAI, Ollama, Cursor
+│       ├── translation/   # MyMemory, Claude, OpenAI, Ollama, Cursor
+│       └── tts/           # Edge TTS (local device playback)
 └── extension/             # Chrome MV3 extension
     ├── manifest.json
     ├── background.js      # WebSocket client
-    ├── content.js         # Subtitle overlay
-    └── popup.html/js      # Settings UI
+    ├── content.js         # Subtitle overlay + browser-side TTS fallback
+    └── popup.html/js      # Settings UI (incl. audio routing dropdowns)
 ```
 
 ## Troubleshooting
@@ -118,6 +150,9 @@ AutoTranslation/
 | No speech detected | Set the correct device as Windows default output; play audio through it |
 | Settings not saving | Service must be running; popup shows "Not connected!" if WebSocket is down |
 | Cyrillic / Unicode crash | Fixed in `run.py` via UTF-8 console reconfigure |
+| TTS echo loop | Set **Play voice to** → your speakers in the popup so TTS plays via the service, not Chrome |
+| Changed "Capture from" but still capturing old device | Requires service restart to take effect |
+| Switched back from VB-Cable and lost system sound | Check Windows Volume Mixer — Chrome may still have VB-Cable set as its per-app output device |
 
 ## License
 
